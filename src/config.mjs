@@ -44,6 +44,21 @@ function stringMap(value, fallback = {}) {
   return fallback;
 }
 
+function objectValue(value, fallback = null) {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch {
+      // use fallback
+    }
+  }
+  return fallback;
+}
+
 function findT3Runtime() {
   const root = path.join(os.homedir(), ".t3", "runtime", "versions");
   try {
@@ -309,6 +324,10 @@ export function loadConfig(overrides = {}) {
     t3Model: pick("t3Model", "FOREMAN_T3_MODEL", null),
     forceProvider: pick("forceProvider", "FOREMAN_FORCE_PROVIDER", null),
     forceModel: pick("forceModel", "FOREMAN_FORCE_MODEL", null),
+    workerModelRoutes: objectValue(
+      pick("workerModelRoutes", "FOREMAN_WORKER_MODEL_ROUTES", null),
+      null,
+    ),
     modelFast: pick("modelFast", "FOREMAN_MODEL_FAST", null),
     modelStrong: pick("modelStrong", "FOREMAN_MODEL_STRONG", null),
     modelCoding: pick("modelCoding", "FOREMAN_MODEL_CODING", null),
@@ -384,6 +403,7 @@ export function publicConfig(config) {
     t3Model,
     forceProvider,
     forceModel,
+    workerModelRoutes,
     modelFast,
     modelStrong,
     modelCoding,
@@ -431,6 +451,7 @@ export function publicConfig(config) {
     t3Model,
     forceProvider,
     forceModel,
+    workerModelRoutes,
     modelFast,
     modelStrong,
     modelCoding,

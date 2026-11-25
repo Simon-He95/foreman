@@ -22,12 +22,14 @@ import {
   getMasterFc,
   getMeta,
   getTask,
+  getWorkerModelRoutes,
   openDb,
   recentChat,
   revokeWorkerToken,
   SCHEMA_VERSION,
   schemaVersion,
   setMasterFc,
+  setMasterProject,
   setMeta,
   setWorkerStatus,
   setWorkerToken,
@@ -35,7 +37,14 @@ import {
   upsertWorker,
 } from "./db.mjs";
 import { Leader, LeaderLoop } from "./leader.mjs";
-import { modelCatalog, planTaskModel, reasoningOptionFor } from "./model-policy.mjs";
+import {
+  assertT3ProviderId,
+  mergeModelRoutes,
+  modelCatalog,
+  modelRouteText,
+  planTaskModel,
+  reasoningOptionFor,
+} from "./model-policy.mjs";
 import {
   leaderProviderSummary,
   normalizeLeaderOverride,
@@ -370,6 +379,7 @@ async function commandInit(flags) {
       modelCoding,
       forceModel: flags["force-model"] ? String(flags["force-model"]).trim() : null,
       forceProvider: flags["force-provider"] ? String(flags["force-provider"]).trim() : null,
+      workerModelRoutes: null,
       t3ReasoningOption: mode === "t3" ? (provider === "dim" ? "thought_level" : "effort") : null,
       t3Worktree: false,
       concurrency: Number(flags.concurrency || 2),
@@ -442,7 +452,7 @@ async function commandInit(flags) {
 async function commandAdd(flags, positional) {
   const title = positional.join(" ").trim();
   if (!title) {
-    console.error("usage: foreman add <title> [--brief text] [--priority 50] [--adapter mock|t3] [--project name|path] [--model slug] [--effort auto|none|high|max] [--done-token DONE] [--artifact path] [--artifact-contains text] [--require-diff]");
+    console.error("usage: foreman add <title> [--brief text] [--priority 50] [--adapter mock|t3] [--project name|path] [--category light|standard|deep|coding] [--model slug] [--effort auto|none|high|max] [--done-token DONE] [--artifact path] [--artifact-contains text] [--require-diff]");
     process.exitCode = 2;
     return;
   }
@@ -457,13 +467,21 @@ async function commandAdd(flags, positional) {
   const adapter = String(flags.adapter || resolved.adapter || config.adapter);
   createAdapter(adapter, config); // fail fast on an unknown adapter
   const brief = String(flags.brief || title);
+  const routes = mergeModelRoutes(config.workerModelRoutes);
   const plan = planTaskModel(config, {
     title,
     brief,
     adapter,
+    provider: flags.provider,
+    category: flags.category,
     model: flags.model,
     effort: flags.effort || flags["thought-level"] || flags.thinking,
+    routes,
+    modelOverride: Boolean(flags.model),
   });
+  const provider = assertT3ProviderId(
+    config.forceProvider || plan.provider || flags.provider || null,
+  );
   const task = addTask(db, {
     title,
     brief,
@@ -472,7 +490,7 @@ async function commandAdd(flags, positional) {
     projectPath,
     projectId: resolved.project?.id ?? null,
     permissionMode: flags.permission || null,
-    provider: config.forceProvider || flags.provider || null,
+    provider,
     model: plan.model,
     effort: plan.effort,
     maxAttempts: Number(flags["max-attempts"]) || config.maxAttempts,
@@ -497,6 +515,12 @@ async function commandModels(flags) {
   try {
     const catalog = modelCatalog(config);
     const leaderOptions = leaderProviderSummary(config);
+    const masterThreadId = getMeta(db, "master_thread_id");
+    const workerRoutes = mergeModelRoutes(
+      config.workerModelRoutes,
+      getWorkerModelRoutes(db, null),
+      getWorkerModelRoutes(db, masterThreadId),
+    );
     const payload = {
       leader: {
         mode: config.leaderMode,
@@ -516,6 +540,7 @@ async function commandModels(flags) {
       },
       forceProvider: config.forceProvider || null,
       forceModel: config.forceModel || null,
+      workerRoutes,
       fast: catalog.fast,
       strong: catalog.strong,
       coding: catalog.coding,
@@ -531,6 +556,7 @@ async function commandModels(flags) {
     console.log(`leader choices    ${payload.leader.choices.length}`);
     console.log(`provider          ${payload.provider || "(not set)"}`);
     console.log(`force             ${payload.forceProvider || "-"} / ${payload.forceModel || "-"}`);
+    console.log(`worker routes     ${modelRouteText(payload.workerRoutes)}`);
     console.log(
       `reasoning option  ${payload.reasoningOption || "(not set)"} (fallback; dim/dima/codex/claude auto)`,
     );
@@ -792,6 +818,7 @@ async function commandMaster(flags, positional = []) {
           console.log(
             `FC: ${fc.provider || "-"} / ${fc.model || "-"} / effort ${fc.effort || "auto"}`,
           );
+          console.log(`project: ${getMeta(db, `master_project:${threadId}`) || "-"}`);
         }
       }
       return;
@@ -874,6 +901,7 @@ async function commandMaster(flags, positional = []) {
         model: selectedLeader.model,
         effort: selectedLeader.effort,
       });
+      setMasterProject(db, data.threadId, project);
       console.log(`master thread created: ${data.threadId}`);
       return;
     }
@@ -1446,7 +1474,7 @@ function usage() {
 usage:
   foreman init [--yes] [--project path] [--adapter mock|t3] [--provider dim] [--model slug] [--leader dim|dima|codex|claude] [--leader-provider id] [--leader-model slug] [--leader-effort auto|none|high|max] [--force-model slug] [--force-provider id] [--data-dir .foreman] [--port 3777] [--register] [--force]
   foreman add <title> --brief "..." [--priority 50] [--adapter mock|t3] [--project name|path]
-                [--provider id] [--model slug] [--effort auto|none|high|max]
+                [--provider id] [--category light|standard|deep|coding] [--model slug] [--effort auto|none|high|max]
                 [--done-token DONE] [--artifact path] [--artifact-contains text] [--require-diff]
   foreman project list
   foreman project add <name> --path <dir> [--adapter mock|t3]

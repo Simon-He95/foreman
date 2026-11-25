@@ -28,6 +28,72 @@ Defaults are configuration, not hard requirements:
 }
 ```
 
+## User-directed routes
+
+Tiers are defaults, not a mandate. A user can assign different providers and
+models to different kinds of work. The leader stores this as a per-master route
+table, so it survives later turns and is visible in the next prompt:
+
+```json
+{
+  "workerModelRoutes": {
+    "default": {
+      "provider": "dima",
+      "model": "deepseek-v4.1-flash",
+      "effort": "max"
+    },
+    "deep": {
+      "provider": "dim",
+      "model": "dimcode-api-oauth/gpt-6.2-astra",
+      "effort": "max"
+    },
+    "coding": {
+      "provider": "dim",
+      "model": "dimcode-api-oauth/claude-opus-5-5",
+      "effort": "max"
+    }
+  }
+}
+```
+
+Examples of user intent:
+
+- “研究/探索都用 Rust DimAgent 的 DeepSeek V4.1 Flash，effort max。”
+- “修复和重构用 Opus，普通查询用 DeepSeek Flash，默认跟主 Run。”
+- “这次单独用 Opus，别改以后的路由。”
+- “接下来所有 worker 和 subagent 都用我现在主 Run 的模型。” This must
+  use `set_model_routes` with `all`, not only `default`, because existing
+  category routes take precedence over `default`.
+
+The leader implements the first two by emitting a `set_model_routes` action; it
+implements a one-off request with `modelOverride: true` on `add_task`. Routes
+are keyed by `default`, `light`/`fast`, `standard`, `deep`/`research`/`explore`,
+and `coding`/`fix`/`repair`. A leader can also pass `category` to `add_task`
+(for example `category:"deep"`) when the user clearly describes the task as
+exploration or repair, so routing follows the user's intent rather than only
+the title classifier. To intentionally make every category use one pair,
+use the action's `all` field:
+
+```json
+{
+  "type": "set_model_routes",
+  "all": {
+    "provider": "dima",
+    "model": "deepseek-v4.1-flash",
+    "effort": "max"
+  }
+}
+```
+
+A route always carries **provider + model** because a T3 model slug is only
+unique inside its provider. `dimcode-api-oauth/deepseek-v4.1-flash` belongs to
+the `dim` provider, while `deepseek-v4.1-flash` belongs to `dima`. Foreman
+rejects a model namespace used as a provider id before T3 starts.
+
+The current master thread's provider/model/effort is included in the leader
+prompt as the `【当前主 Run】` section. That makes “use my current run's model”
+unambiguous without forcing every worker to inherit it automatically.
+
 ## Explicit overrides
 
 In a master thread:

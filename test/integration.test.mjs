@@ -27,6 +27,7 @@ import {
   getProject,
   getMasterFc,
   getTask,
+  getWorkerModelRoutes,
   importRunningTask,
   openDb,
   queuedTasks,
@@ -227,6 +228,228 @@ test("model policy chooses by difficulty and honors explicit overrides", () => {
   assert.equal(reasoningOptionFor("dima"), "effort");
   assert.equal(reasoningOptionFor("codex"), "reasoningEffort");
   assert.equal(reasoningOptionFor("claudeAgent"), "effort");
+});
+
+test("model routes keep provider and model paired and support explicit overrides", () => {
+  const config = testConfig(tempDir(), {
+    t3Provider: "dim",
+    t3Model: "dimcode-api-oauth/deepseek-v4.1-flash",
+    modelStrong: "dimcode-api-oauth/gpt-6.2-astra",
+    modelCoding: "dimcode-api-oauth/claude-opus-5-5",
+  });
+  const masterFc = {
+    provider: "dima",
+    model: "deepseek-v4.1-flash",
+    effort: "max",
+  };
+  const routes = {
+    standard: {
+      provider: "dim",
+      model: "dimcode-api-oauth/deepseek-v4.1-flash",
+      effort: "max",
+    },
+    coding: {
+      provider: "dim",
+      model: "dimcode-api-oauth/claude-opus-5-5",
+      effort: "max",
+    },
+  };
+
+  const routed = planTaskModel(config, {
+    title: "查实时天气",
+    brief: "查询温度和湿度",
+    adapter: "t3",
+    model: "deepseek-v4.1-flash",
+    effort: "high",
+    routes,
+    masterFc,
+  });
+  assert.equal(routed.source, "route");
+  assert.equal(routed.provider, "dim");
+  assert.equal(routed.model, "dimcode-api-oauth/deepseek-v4.1-flash");
+  assert.equal(routed.effort, "max");
+
+  const categoryRouted = planTaskModel(config, {
+    title: "查实时天气",
+    brief: "查询温度和湿度",
+    adapter: "t3",
+    category: "standard",
+    routes,
+  });
+  assert.equal(categoryRouted.provider, "dim");
+  assert.equal(categoryRouted.model, "dimcode-api-oauth/deepseek-v4.1-flash");
+  assert.equal(categoryRouted.effort, "max");
+
+  const notAutoInherited = planTaskModel(config, {
+    title: "查实时天气",
+    brief: "查询温度和湿度",
+    adapter: "t3",
+    routes: {},
+    masterFc,
+  });
+  assert.equal(notAutoInherited.model, "dimcode-api-oauth/deepseek-v4.1-flash");
+  assert.equal(notAutoInherited.provider, null);
+
+  const inferred = planTaskModel(config, {
+    title: "查实时天气",
+    brief: "查询温度和湿度",
+    adapter: "t3",
+    model: "deepseek-v4.1-flash",
+    effort: "max",
+    masterFc,
+  });
+  assert.equal(inferred.provider, "dima");
+  assert.equal(inferred.model, "deepseek-v4.1-flash");
+
+  const overridden = planTaskModel(config, {
+    title: "查实时天气",
+    brief: "查询温度和湿度",
+    adapter: "t3",
+    provider: "dima",
+    model: "deepseek-v4.1-flash",
+    effort: "max",
+    routes,
+    masterFc,
+    modelOverride: true,
+  });
+  assert.equal(overridden.source, "override");
+  assert.equal(overridden.provider, "dima");
+
+  assert.throws(
+    () =>
+      planTaskModel(config, {
+        title: "查实时天气",
+        brief: "查询温度和湿度",
+        adapter: "t3",
+        provider: "dimcode-api-oauth",
+        model: "deepseek-v4.1-flash",
+        routes: {},
+        modelOverride: true,
+      }),
+    /invalid T3 provider id/,
+  );
+});
+
+test("user-directed routes persist per master and drive delegated tasks", async () => {
+  const dir = tempDir();
+  const config = testConfig(dir, {
+    adapter: "t3",
+    t3Provider: "dim",
+    t3Model: "dimcode-api-oauth/deepseek-v4.1-flash",
+    modelStrong: "dimcode-api-oauth/gpt-6.2-astra",
+    modelCoding: "dimcode-api-oauth/claude-opus-5-5",
+    leaderMode: "rule",
+    allowedProjectRoots: [dir],
+  });
+  const db = openDb(config.dbPath);
+  try {
+    setMasterFc(db, "mcp:route-master", {
+      provider: "dima",
+      model: "deepseek-v4.1-flash",
+      effort: "max",
+    });
+    setMeta(db, "master_project:mcp:route-master", dir);
+    const leader = new Leader({ db, config, logger: quiet });
+    const applied = await leader.applyActions(
+      [
+        {
+          type: "set_model_routes",
+          routes: {
+            standard: {
+              provider: "dim",
+              model: "dimcode-api-oauth/deepseek-v4.1-flash",
+              effort: "max",
+            },
+          },
+        },
+        {
+          type: "add_task",
+          title: "查上海实时天气",
+          brief: "查询温度、湿度和风速",
+          adapter: "t3",
+          projectPath: dir,
+          model: "deepseek-v4.1-flash",
+          effort: "high",
+        },
+      ],
+      { masterThreadId: "mcp:route-master", deferAddTasks: true },
+    );
+    assert.equal(applied[0].ok, true);
+    assert.equal(applied[1].pending, true);
+    assert.equal(applied[1].task.provider, "dim");
+    assert.equal(
+      applied[1].task.model,
+      "dimcode-api-oauth/deepseek-v4.1-flash",
+    );
+    assert.equal(applied[1].task.effort, "max");
+    const stored = getWorkerModelRoutes(db, "mcp:route-master");
+    assert.equal(stored.standard.provider, "dim");
+    const prompt = leader.buildPrompt({
+      message: "查天气",
+      trigger: "user",
+      events: [],
+      masterThreadId: "mcp:route-master",
+      currentFc: {
+        provider: "dima",
+        model: "deepseek-v4.1-flash",
+        effort: "max",
+      },
+    });
+    assert.match(prompt, /identity: dima::deepseek-v4\.1-flash/);
+    assert.match(prompt, new RegExp(`project: ${dir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+    assert.match(prompt, /worker-routes: standard=dim::dimcode-api-oauth\/deepseek-v4\.1-flash\/max/);
+    const card = buildStateCard(db, config, {
+      masterThreadId: "mcp:route-master",
+    });
+    assert.match(card, /MASTER PROJECT:/);
+
+    const all = await leader.applyActions(
+      [
+        {
+          type: "set_model_routes",
+          all: {
+            provider: "dima",
+            model: "deepseek-v4.1-flash",
+            effort: "max",
+          },
+        },
+        {
+          type: "add_task",
+          title: "查杭州实时天气",
+          brief: "查询温度、湿度和风速",
+          adapter: "t3",
+          projectPath: dir,
+        },
+      ],
+      { masterThreadId: "mcp:route-master", deferAddTasks: true },
+    );
+    assert.equal(all[0].ok, true);
+    assert.equal(all[1].task.provider, "dima");
+    assert.equal(all[1].task.model, "deepseek-v4.1-flash");
+    assert.equal(all[1].task.effort, "max");
+    assert.equal(
+      getWorkerModelRoutes(db, "mcp:route-master").coding.provider,
+      "dima",
+    );
+
+    const invalid = await leader.applyActions(
+      [
+        {
+          type: "set_model_routes",
+          all: {
+            provider: "dimcode-api-oauth",
+            model: "deepseek-v4.1-flash",
+          },
+        },
+      ],
+      { masterThreadId: "mcp:route-master" },
+    );
+    assert.equal(invalid[0].ok, false);
+    assert.match(invalid[0].error, /invalid T3 provider id/);
+  } finally {
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("FC leader choices expose provider models and per-provider effort", () => {

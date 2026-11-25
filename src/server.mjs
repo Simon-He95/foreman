@@ -11,11 +11,13 @@ import {
   getMeta,
   getTask,
   getWorkerByTokenHash,
+  getWorkerModelRoutes,
   importRunningTask,
   recentChat,
   recentEvents,
   revokeWorkerToken,
   setMasterFc,
+  setMasterProject,
   setMeta,
   setWorkerStatus,
   stateVersion,
@@ -30,7 +32,11 @@ import {
   workerSnapshot,
 } from "./worker-broker.mjs";
 import { validateArtifactPath } from "./projects.mjs";
-import { planTaskModel } from "./model-policy.mjs";
+import {
+  assertT3ProviderId,
+  mergeModelRoutes,
+  planTaskModel,
+} from "./model-policy.mjs";
 import { WORKER_PROTOCOL_VERSION } from "./protocol.mjs";
 import {
   ensureDefaultProject,
@@ -529,14 +535,36 @@ export function startServer({ db, config, daemon, leader, logger = console }) {
         const provider = body.provider
           ? String(body.provider).trim().slice(0, 120)
           : null;
+        const masterThreadId = body.masterThreadId
+          ? String(body.masterThreadId).slice(0, 300)
+          : null;
+        const masterFc = masterThreadId ? getMasterFc(db, masterThreadId) : null;
+        const routes = mergeModelRoutes(
+          config.workerModelRoutes,
+          getWorkerModelRoutes(db, null),
+          getWorkerModelRoutes(db, masterThreadId),
+        );
         const brief = String(body.brief || title);
         const plan = planTaskModel(config, {
           title,
           brief,
           adapter,
+          provider,
+          category: body.category,
           model: body.model,
           effort: body.effort || body.thoughtLevel,
+          routes,
+          masterFc,
+          modelOverride: body.modelOverride === true || Boolean(body.model),
         });
+        let taskProvider;
+        try {
+          taskProvider = assertT3ProviderId(
+            plan.provider || config.forceProvider || provider || null,
+          );
+        } catch (error) {
+          throw httpError(400, error.message);
+        }
         const task = addTask(db, {
           title,
           brief,
@@ -545,10 +573,8 @@ export function startServer({ db, config, daemon, leader, logger = console }) {
           projectPath,
           projectId: resolvedProject.project?.id ?? null,
           workerId,
-          masterThreadId: body.masterThreadId
-            ? String(body.masterThreadId).slice(0, 300)
-            : null,
-          provider: config.forceProvider || provider || null,
+          masterThreadId,
+          provider: taskProvider,
           model: plan.model,
           effort: plan.effort,
           maxAttempts: Number(body.maxAttempts) || config.maxAttempts,
@@ -589,6 +615,13 @@ export function startServer({ db, config, daemon, leader, logger = console }) {
         const masterThreadId = body.masterThreadId
           ? String(body.masterThreadId).slice(0, 300)
           : null;
+        if (masterThreadId && body.masterProject) {
+          setMasterProject(
+            db,
+            masterThreadId,
+            String(body.masterProject).slice(0, 1000),
+          );
+        }
         let leaderOverride =
           body.leader && typeof body.leader === "object"
             ? {

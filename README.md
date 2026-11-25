@@ -281,8 +281,12 @@ foreman add "Audit the payment callback" \
 
 The **leader** has an independent `leaderMode` / `leaderProvider` /
 `leaderModel` / `leaderEffort`; worker threads use `t3Provider`, `t3Model`, and
-the fast/strong/coding tiers. A task can override provider/model; `forceModel`
-and `forceProvider` are available when a deployment needs a fixed worker fleet.
+the fast/strong/coding tiers. In the FC, you can also assign provider/models by
+task category: “research with X, fixes with Y, default with Z.” Foreman persists
+those routes per master (`workerModelRoutes`) and shows the current FC identity
+and route table to the leader. Routes are provider-qualified; a one-off request
+uses `modelOverride`. The optional `forceModel` / `forceProvider` locks remain
+available when a deployment truly needs a fixed fleet.
 
 When you create a **Foreman (control plane)** thread in T3, its model picker
 lists configured FC provider/model choices and its effort picker sets the

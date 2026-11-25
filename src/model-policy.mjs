@@ -12,6 +12,140 @@ const EFFORT_ALIASES = {
 
 export const EFFORT_LEVELS = ["auto", "none", "high", "max"];
 
+export const MODEL_ROUTE_KEYS = ["default", "light", "standard", "deep", "coding"];
+
+const MODEL_ROUTE_ALIASES = {
+  default: "default",
+  light: "light",
+  fast: "light",
+  standard: "standard",
+  deep: "deep",
+  research: "deep",
+  explore: "deep",
+  exploration: "deep",
+  investigate: "deep",
+  coding: "coding",
+  code: "coding",
+  fix: "coding",
+  repair: "coding",
+  implement: "coding",
+};
+
+export function normalizeModelRouteKey(value) {
+  const key = String(value || "").trim().toLowerCase();
+  return MODEL_ROUTE_ALIASES[key] || null;
+}
+
+/**
+ * T3 provider ids are instance ids, not model-name prefixes. A value such as
+ * "dimcode-api-oauth" is part of a model slug and must never be sent as a
+ * provider instance id.
+ */
+export function assertT3ProviderId(value, modelSlugs = []) {
+  const provider = String(value || "").trim();
+  if (!provider) return null;
+  if (provider.includes("/") || provider.includes("::")) {
+    throw new Error(
+      `invalid T3 provider id "${provider}": use the provider instance id (for example dim, dima, codex, claudeAgent), not a model prefix`,
+    );
+  }
+  const looksLikeNamespace = modelSlugs.some((slug) =>
+    String(slug || "").startsWith(`${provider}/`),
+  );
+  if (looksLikeNamespace) {
+    throw new Error(
+      `invalid T3 provider id "${provider}": this is a model namespace prefix; use the provider instance id (dim, dima, codex, claudeAgent) instead`,
+    );
+  }
+  return provider;
+}
+
+export function normalizeModelRoute(route) {
+  if (route === null || route === undefined || route === "") return null;
+  let value = route;
+  if (typeof route === "string") {
+    const at = route.indexOf("::");
+    if (at <= 0 || at >= route.length - 2) {
+      throw new Error(
+        `invalid model route "${route}": use "provider::model" or an object with provider and model`,
+      );
+    }
+    value = { provider: route.slice(0, at), model: route.slice(at + 2) };
+  }
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("model route must be an object with provider and model");
+  }
+  const provider = assertT3ProviderId(value.provider);
+  const model = String(value.model || "").trim();
+  if (!provider || !model) {
+    throw new Error("model route needs both provider and model");
+  }
+  const rawEffort = value.effort;
+  const effort = normalizeEffort(rawEffort);
+  if (
+    rawEffort !== undefined &&
+    rawEffort !== null &&
+    rawEffort !== "" &&
+    !effort
+  ) {
+    throw new Error(`invalid effort "${rawEffort}" in model route`);
+  }
+  return { provider, model, ...(effort ? { effort } : {}) };
+}
+
+export function normalizeModelRoutes(routes) {
+  if (routes === null || routes === undefined || routes === "") return {};
+  if (typeof routes !== "object" || Array.isArray(routes)) {
+    throw new Error("model routes must be an object keyed by task category");
+  }
+  const result = {};
+  for (const [rawKey, rawRoute] of Object.entries(routes)) {
+    const raw = String(rawKey || "").trim().toLowerCase();
+    if (raw === "all") {
+      const route = normalizeModelRoute(rawRoute);
+      if (route) {
+        for (const key of MODEL_ROUTE_KEYS) result[key] = route;
+      }
+      continue;
+    }
+    const key = normalizeModelRouteKey(rawKey);
+    if (!key) {
+      throw new Error(
+        `unknown model route "${rawKey}"; use all, default, light, standard, deep, or coding`,
+      );
+    }
+    const route = normalizeModelRoute(rawRoute);
+    if (route) result[key] = route;
+  }
+  return result;
+}
+
+export function mergeModelRoutes(...sources) {
+  const result = {};
+  for (const source of sources) {
+    Object.assign(result, normalizeModelRoutes(source));
+  }
+  return result;
+}
+
+export function assertModelRouteProviders(routes, modelSlugs = []) {
+  for (const route of Object.values(normalizeModelRoutes(routes))) {
+    assertT3ProviderId(route.provider, modelSlugs);
+  }
+  return routes;
+}
+
+export function modelRouteText(routes) {
+  const entries = Object.entries(normalizeModelRoutes(routes));
+  if (!entries.length) return "(none)";
+  return entries
+    .map(([key, route]) => {
+      const effort = route.effort ? `/${route.effort}` : "";
+      return `${key}=${route.provider}::${route.model}${effort}`;
+    })
+    .join(" | ");
+}
+
 export function reasoningOptionFor(provider, fallback = null) {
   const id = String(provider || "").trim();
   // T3 providers do not share the same model-option id for reasoning effort.
@@ -98,37 +232,103 @@ export function classifyTask({ title = "", brief = "" } = {}) {
 
 export function planTaskModel(
   config,
-  { title, brief, adapter, model, effort } = {},
+  {
+    title,
+    brief,
+    adapter,
+    model,
+    effort,
+    provider,
+    category,
+    routes = null,
+    masterFc = null,
+    modelOverride = false,
+  } = {},
 ) {
   if (adapter && adapter !== "t3") {
-    return { model: null, effort: null, tier: "none" };
+    return { model: null, effort: null, tier: "none", provider: null, source: "none" };
   }
   const catalog = modelCatalog(config);
-  const tier = classifyTask({ title, brief });
-  const forcedModel = config.forceModel ? String(config.forceModel).trim() : null;
-  if (forcedModel) {
-    return {
-      model: forcedModel,
-      effort: normalizeEffort(effort) || {
-        light: "none",
-        standard: "auto",
-        deep: "max",
-        coding: "max",
-      }[tier],
-      tier,
-    };
+  const requestedCategory = category
+    ? normalizeModelRouteKey(category)
+    : null;
+  if (category && !requestedCategory) {
+    throw new Error(
+      `invalid task category "${category}"; use light, standard, deep, or coding`,
+    );
   }
+  const tier =
+    requestedCategory && requestedCategory !== "default"
+      ? requestedCategory
+      : classifyTask({ title, brief });
   const base = {
     light: { model: catalog.fast, effort: "none" },
     standard: { model: catalog.fast, effort: "auto" },
     deep: { model: catalog.strong, effort: "max" },
     coding: { model: catalog.coding, effort: "max" },
   }[tier];
-
-  let selectedModel =
+  const routeMap = normalizeModelRoutes(routes);
+  const tierRoute = routeMap[tier] || null;
+  const defaultRoute = routeMap.default || null;
+  const route = tierRoute || defaultRoute;
+  const routeKey = tierRoute ? tier : defaultRoute ? "default" : null;
+  const knownModels = [
+    catalog.fast,
+    catalog.strong,
+    catalog.coding,
+    config.t3Model,
+    masterFc?.model,
+    ...Object.values(routeMap).map((route) => route.model),
+  ].filter(Boolean);
+  for (const routeValue of Object.values(routeMap)) {
+    assertT3ProviderId(routeValue.provider, knownModels);
+  }
+  const requestedModel =
     model && String(model).trim() && String(model).trim() !== "auto"
       ? String(model).trim()
       : null;
+  const requestedEffort = normalizeEffort(effort);
+
+  // A deployment-wide force remains an explicit, deliberate hard lock. It is
+  // intentionally separate from the user-directed category routes below.
+  const forcedModel = config.forceModel ? String(config.forceModel).trim() : null;
+  if (forcedModel) {
+    let forcedProvider = config.forceProvider
+      ? assertT3ProviderId(config.forceProvider, knownModels)
+      : assertT3ProviderId(provider, knownModels);
+    if (
+      !forcedProvider &&
+      masterFc?.provider &&
+      String(masterFc.model || "").trim() === forcedModel
+    ) {
+      forcedProvider = assertT3ProviderId(masterFc.provider, knownModels);
+    }
+    return {
+      model: forcedModel,
+      effort: requestedEffort || base.effort,
+      tier,
+      provider: forcedProvider || null,
+      source: "force",
+      route: null,
+    };
+  }
+
+  // Routes are user-directed defaults for a task category. A specific task may
+  // only bypass them when the leader marks it as an explicit user override.
+  // A route's own effort is authoritative; otherwise a one-off effort wins.
+  if (route && !(modelOverride && requestedModel)) {
+    return {
+      provider: route.provider,
+      model: route.model,
+      effort: route.effort || requestedEffort || base.effort,
+      tier,
+      source: "route",
+      route: routeKey,
+    };
+  }
+
+  const requestedProvider = assertT3ProviderId(provider, knownModels);
+  let selectedModel = requestedModel;
   if (selectedModel) {
     const alias = {
       fast: catalog.fast,
@@ -138,13 +338,34 @@ export function planTaskModel(
     }[selectedModel.toLowerCase()];
     if (alias !== undefined) selectedModel = alias;
   }
-  let selectedEffort = normalizeEffort(effort);
+  let selectedEffort = requestedEffort;
+  let selectedProvider = requestedProvider;
+
+  // A model slug is only unique inside a provider. When the user says "use my
+  // current run's model", the leader may omit the provider; recover it from the
+  // master selection instead of falling back to an unrelated t3Provider.
+  if (
+    selectedModel &&
+    !selectedProvider &&
+    masterFc?.provider &&
+    String(masterFc.model || "").trim() === selectedModel
+  ) {
+    selectedProvider = assertT3ProviderId(masterFc.provider, knownModels);
+  }
+  if (
+    selectedModel &&
+    !selectedProvider &&
+    route?.provider &&
+    route.model === selectedModel
+  ) {
+    selectedProvider = route.provider;
+  }
 
   if (!selectedModel && !selectedEffort) {
-    return { ...base, tier };
+    return { ...base, tier, provider: selectedProvider || null, source: "tier", route: null };
   }
   if (!selectedModel) {
-    selectedModel = base.model;
+    selectedModel = route?.model || base.model;
     if (
       (selectedEffort === "max" || selectedEffort === "high") &&
       (tier === "light" || tier === "standard")
@@ -154,7 +375,14 @@ export function planTaskModel(
   }
   if (!selectedEffort) selectedEffort = base.effort;
   if (!selectedModel) selectedModel = catalog.fast;
-  return { model: selectedModel, effort: selectedEffort, tier };
+  return {
+    model: selectedModel,
+    effort: selectedEffort,
+    tier,
+    provider: selectedProvider || null,
+    source: modelOverride ? "override" : "explicit",
+    route: null,
+  };
 }
 
 export function modelPolicyText(config) {

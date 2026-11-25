@@ -27,6 +27,11 @@ master. This is what makes the T3 Thread details / Lineage panel useful.
   wakeups happen outside a run and therefore create top-level tasks.
 - **T3 MCP:** the Foreman provider process must have
   `T3_ACP_MCP_ENDPOINT` and `T3_ACP_MCP_AUTHORIZATION` (T3 supplies these).
+- **Known master checkout:** the Foreman ACP provider reports the master's
+  `session.cwd`; Foreman stores it as `master_project:<threadId>` and includes
+  it in the leader prompt. A project mismatch is therefore visible before the
+  task is dispatched. It still falls back to a top-level worker because T3
+  does not allow cross-project local delegation.
 
 ## Fallback behavior
 

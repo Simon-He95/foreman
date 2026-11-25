@@ -47,6 +47,7 @@ node src/cli.mjs init
 | `modelCoding` | `FOREMAN_MODEL_CODING` | coding/refactor model |
 | `forceModel` | `FOREMAN_FORCE_MODEL` | optional hard worker-model lock; ignores task overrides |
 | `forceProvider` | `FOREMAN_FORCE_PROVIDER` | optional hard worker-provider lock; ignores task overrides |
+| `workerModelRoutes` | `FOREMAN_WORKER_MODEL_ROUTES` | optional category routes: `light`, `standard`, `deep`, `coding`, `default`; each is `{provider, model, effort}` |
 
 The leader model is independent from workers. For example, a smart leader and
 cheaper workers:
@@ -68,6 +69,74 @@ To make **all** workers use one model without allowing overrides, set
 `forceProvider`. Without the force locks, `modelFast` / `modelStrong` /
 `modelCoding` are the tier defaults and `t3Provider` is the default worker
 provider.
+
+## User-directed model routes
+
+Workers do **not** automatically inherit the FC model. The FC exposes its
+current `provider / model / effort` to the leader, and the user can choose how
+work maps to models. A route stores the complete T3 identity, because a model
+slug is only unique within its provider:
+
+```json
+{
+  "workerModelRoutes": {
+    "default": {
+      "provider": "dima",
+      "model": "deepseek-v4.1-flash",
+      "effort": "max"
+    },
+    "deep": {
+      "provider": "dim",
+      "model": "dimcode-api-oauth/gpt-6.2-astra",
+      "effort": "max"
+    },
+    "coding": {
+      "provider": "dim",
+      "model": "dimcode-api-oauth/claude-opus-5-5",
+      "effort": "max"
+    }
+  }
+}
+```
+
+Routes are evaluated after task classification: a specific tier route wins, then
+`default`, then the legacy fast/strong/coding tiers. A route's `effort` is
+authoritative; if omitted, the task's explicit effort or the tier default is
+used. `fast` is an alias for `light`; `deep` also accepts `research` / `explore`;
+`coding` also accepts `fix` / `repair`.
+
+Routes can be set in a conversation. The leader persists them per master thread
+with the `set_model_routes` action:
+
+```json
+{
+  "type": "set_model_routes",
+  "routes": {
+    "deep": { "provider": "dima", "model": "deepseek-v4.1-flash", "effort": "max" },
+    "coding": { "provider": "dim", "model": "dimcode-api-oauth/claude-opus-5-5", "effort": "max" }
+  }
+}
+```
+
+For a one-off model request, the leader sets `modelOverride: true` on
+`add_task`; this bypasses routes for that task. To intentionally make all
+categories use one pair, use `set_model_routes` with `all`:
+
+```json
+{
+  "type": "set_model_routes",
+  "all": {
+    "provider": "dima",
+    "model": "deepseek-v4.1-flash",
+    "effort": "max"
+  }
+}
+```
+
+This is still a user-directed choice, not automatic inheritance. Model/provider
+identity is validated before T3 starts: `dimcode-api-oauth` is a model namespace,
+not a T3 provider instance. The current routes are printed by `foreman models`
+and included in the leader's prompt as `worker-routes`.
 
 Per-task overrides:
 
@@ -105,7 +174,11 @@ node src/cli.mjs master test
 
 `master create` uses `t3Project`, provider `foreman`, the default FC model
 choice, and binds the new thread automatically. In T3, the Foreman provider's
-model picker and effort picker set the leader for that master thread.
+model picker and effort picker set the leader for that master thread. The
+master's checkout is reported by the ACP provider and stored as
+`master_project:<threadId>`; the leader prompt and state card show it. Use a
+master in the same T3 project as its tasks when native child lineage is
+required.
 
 The selection is stored in `meta.master_fc:<t3-thread-id>` and is reused when
 the T3 thread resumes. Tasks created by a master carry that `master_thread_id`

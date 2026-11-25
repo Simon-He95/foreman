@@ -489,7 +489,10 @@ async function delegatePendingTasks(applied, session) {
   return results;
 }
 
-async function askForeman(message, { delegateTasks = false, leader = null } = {}) {
+async function askForeman(
+  message,
+  { delegateTasks = false, leader = null, masterProject = null } = {},
+) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 130000);
   try {
@@ -502,6 +505,7 @@ async function askForeman(message, { delegateTasks = false, leader = null } = {}
         message,
         delegateTasks,
         leader,
+        masterProject,
         masterThreadId: t3ThreadId || null,
       }),
       signal: controller.signal,
@@ -670,6 +674,7 @@ async function handle(message) {
       const currentLeader = leaderOptions(session).current;
       const result = await askForeman(request, {
         delegateTasks: Boolean(mcpEndpoint),
+        masterProject: session?.cwd || null,
         leader: {
           provider: currentLeader.provider,
           model: currentLeader.model,

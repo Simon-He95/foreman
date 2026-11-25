@@ -32,6 +32,7 @@ text; this page is the reference.
 --project name|path
 --adapter mock|t3
 --provider id
+--category light|standard|deep|coding
 --model slug
 --effort auto|none|high|max
 --max-attempts N
@@ -98,7 +99,9 @@ discovered from enabled T3 providers (plus `leaderChoices`). Upstream T3 worker
 model additions or removals require updating `modelFast`, `modelStrong`, and
 `modelCoding`, then restarting `foreman up`. FC choices refresh when T3
 refreshes its provider cache; restart T3 after adding/removing a provider.
-The selected FC is persisted per T3 master thread.
+The selected FC is persisted per T3 master thread. The output also shows
+`worker routes` when the master or config has a category map (`light`,
+`standard`, `deep`, `coding`, `default`); each route is a provider + model pair.
 
 ## Release (maintainers)
 

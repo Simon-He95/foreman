@@ -746,6 +746,36 @@ export function setMeta(db, key, value) {
   ).run(key, value);
 }
 
+export function deleteMeta(db, key) {
+  db.prepare("DELETE FROM meta WHERE key = ?").run(key);
+}
+
+function workerRoutesKey(threadId) {
+  return `worker_model_routes:${threadId || "global"}`;
+}
+
+export function setWorkerModelRoutes(db, threadId, routes) {
+  const key = workerRoutesKey(threadId);
+  if (!routes || Object.keys(routes).length === 0) {
+    deleteMeta(db, key);
+    return;
+  }
+  setMeta(db, key, JSON.stringify(routes));
+}
+
+export function getWorkerModelRoutes(db, threadId) {
+  const raw = getMeta(db, workerRoutesKey(threadId));
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export function setMasterFc(db, threadId, fc) {
   if (!threadId || !fc) return;
   setMeta(
@@ -772,6 +802,16 @@ export function getMasterFc(db, threadId) {
   } catch {
     return null;
   }
+}
+
+export function setMasterProject(db, threadId, project) {
+  if (!threadId || !project) return;
+  setMeta(db, `master_project:${threadId}`, String(project));
+}
+
+export function getMasterProject(db, threadId) {
+  if (!threadId) return null;
+  return getMeta(db, `master_project:${threadId}`);
 }
 
 export function listMasterFcs(db) {

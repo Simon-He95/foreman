@@ -4,6 +4,25 @@ All notable changes to Foreman are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- User-directed worker model routes (`workerModelRoutes` / `set_model_routes`)
+  keyed by `default`, `light`, `standard`, `deep`, and `coding`, with a
+  `modelOverride` escape hatch for one-off requests.
+- The leader prompt now includes the current master's full FC identity
+  (`provider::model`, effort, routes), and the state card uses the calling
+  master rather than always the primary master.
+
+### Fixed
+
+- Provider and model are kept together when routing work. A bare model slug is
+  resolved against the current master or a route instead of silently falling
+  back to an unrelated provider.
+- Model namespace prefixes such as `dimcode-api-oauth` are rejected as provider
+  instance ids before T3 starts.
+
 ## [1.2.1] - 2026-11-25
 
 ### Fixed

@@ -9,8 +9,11 @@ import {
   queuedTasks,
   recentEvents,
   getMasterFc,
+  getMasterProject,
   getMeta,
+  getWorkerModelRoutes,
 } from "./db.mjs";
+import { mergeModelRoutes, modelRouteText } from "./model-policy.mjs";
 
 export const STATUS_LABEL = {
   queued: "排队",
@@ -88,7 +91,11 @@ function taskLine(task, config, extra = "") {
   return `- [${task.id}] ${oneLine(task.title, 80)} | ${elapsed} | ${attempt} | ${thread} | ${heartbeat} | @${project}${policyPart}${contractPart}${extra}`;
 }
 
-export function buildStateCard(db, config, { maxItems = 12 } = {}) {
+export function buildStateCard(
+  db,
+  config,
+  { maxItems = 12, masterThreadId = null, masterFc = null } = {},
+) {
   const c = counts(db);
   const running = runningTasks(db);
   const queued = queuedTasks(db, 200);
@@ -101,17 +108,28 @@ export function buildStateCard(db, config, { maxItems = 12 } = {}) {
     `FOREMAN 状态卡（权威数据，来自 SQLite；生成于 ${new Date().toLocaleString("zh-CN", { hour12: false })}）`,
   );
   lines.push(`GOAL: ${config.goal}`);
-  const masterThreadId = getMeta(db, "master_thread_id");
-  const masterFc = masterThreadId ? getMasterFc(db, masterThreadId) : null;
-  if (masterFc) {
+  const selectedMasterThreadId =
+    masterThreadId || getMeta(db, "master_thread_id");
+  const selectedFc =
+    masterFc ||
+    (selectedMasterThreadId ? getMasterFc(db, selectedMasterThreadId) : null);
+  if (selectedFc) {
     lines.push(
-      `FC: ${masterFc.provider} / ${masterFc.model} / effort ${masterFc.effort || "auto"} (master ${masterThreadId})`,
+      `FC: ${selectedFc.provider} / ${selectedFc.model} / effort ${selectedFc.effort || "auto"} (master ${selectedMasterThreadId})`,
     );
   } else {
     lines.push(
       `FC: ${config.leaderProvider || config.leaderMode} / ${config.leaderModel || "(config default)"} / effort ${config.leaderEffort || "auto"}`,
     );
   }
+  const routes = mergeModelRoutes(
+    config.workerModelRoutes,
+    getWorkerModelRoutes(db, null),
+    getWorkerModelRoutes(db, selectedMasterThreadId),
+  );
+  lines.push(`WORKER ROUTES: ${modelRouteText(routes)}`);
+  const masterProject = getMasterProject(db, selectedMasterThreadId);
+  lines.push(`MASTER PROJECT: ${shortPath(config, masterProject)}`);
   lines.push(
     `EXECUTION: ${config.executionMode === "worker" ? "worker (daemon only schedules; registered workers execute)" : "local (daemon executes tasks itself)"}`,
   );

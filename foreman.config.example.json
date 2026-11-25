@@ -15,12 +15,15 @@
   "leaderAutoDestructive": false,
   "forceProvider": null,
   "forceModel": null,
+  "workerModelRoutes": null,
   "modelFast": null,
   "modelStrong": null,
   "modelCoding": null,
   "t3ReasoningOption": null,
   "port": 3777,
   "host": "127.0.0.1",
-  "allowedProjectRoots": ["."],
+  "allowedProjectRoots": [
+    "."
+  ],
   "goal": "Dispatch pending work reliably and report exactly what is running, queued, blocked, and done."
 }

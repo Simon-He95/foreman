@@ -242,7 +242,12 @@ thread id reattach。关掉 T3 则 worker thread 也会消失。macOS 需要 24/
 ## 模型与 effort
 
 任务可以单独指定模型和思考等级；不指定时 leader 按难度选择 fast /
-standard / deep / coding 四档。DimAgent 下默认：
+standard / deep / coding 四档。你也可以在 FC 里按用途分配模型，例如“探索用
+X、修复用 Y、默认用 Z”；Foreman 会按 master 持久化 `workerModelRoutes`，并把
+当前主 Run 的 provider/model/effort 和路由表告诉 leader。路由始终带 provider，单次
+任务可用 `modelOverride` 覆盖。需要硬锁时才使用 `forceModel` / `forceProvider`。
+
+DimAgent 下默认：
 
 ```bash
 foreman add "审查支付回调" \
