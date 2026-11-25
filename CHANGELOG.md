@@ -4,6 +4,14 @@ All notable changes to Foreman are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `npm run release` one-command release flow: preflight, tests, version bump,
+  npm publish/approval with one OTP prompt, registry verification, commit, tag,
+  and push. `npm run release:dry` performs a non-mutating pack check.
+
 ## [0.1.2] - 2026-11-25
 
 ### Fixed

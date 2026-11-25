@@ -57,7 +57,9 @@
     "t3:register-mock": "node scripts/setup-t3-mock.mjs",
     "t3:register-dim": "node scripts/setup-t3-dim.mjs",
     "smoke:t3": "node scripts/t3-smoke.mjs",
-    "t3:register-foreman": "node scripts/setup-t3-foreman.mjs"
+    "t3:register-foreman": "node scripts/setup-t3-foreman.mjs",
+    "release": "node scripts/release.mjs",
+    "release:dry": "node scripts/release.mjs --dry-run"
   },
   "dependencies": {
     "t3": "^0.1.11"
