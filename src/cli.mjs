@@ -45,6 +45,7 @@ import {
   planTaskModel,
   reasoningOptionFor,
 } from "./model-policy.mjs";
+import { validateModelTarget } from "./model-catalog.mjs";
 import {
   leaderProviderSummary,
   normalizeLeaderOverride,
@@ -482,6 +483,16 @@ async function commandAdd(flags, positional) {
   const provider = assertT3ProviderId(
     config.forceProvider || plan.provider || flags.provider || null,
   );
+  if (adapter === "t3" && plan.model) {
+    const validation = validateModelTarget(config, {
+      provider,
+      model: plan.model,
+      effort: plan.effort,
+    });
+    if (!validation.ok) {
+      throw new Error(validation.errors.join("; "));
+    }
+  }
   const task = addTask(db, {
     title,
     brief,

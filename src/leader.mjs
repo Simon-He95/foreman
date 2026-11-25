@@ -36,6 +36,7 @@ import {
   reasoningValue,
 } from "./model-policy.mjs";
 import { normalizeLeaderOverride } from "./leader-options.mjs";
+import { validateModelRoutes, validateModelTarget } from "./model-catalog.mjs";
 import { validateArtifactPath } from "./projects.mjs";
 import { resolveTaskProject } from "./registry.mjs";
 
@@ -175,6 +176,8 @@ export class Leader {
       this.db,
       selectedMasterThreadId,
     );
+    const fcValidation = fc ? validateModelTarget(this.config, fc) : null;
+    const routeValidation = validateModelRoutes(this.config, routes);
     return [
       "你是 Foreman，一个 24/7 在线的多 agent 团队调度者。",
       "你的职责只有三件事：读懂权威状态、向人汇报、必要时创建/调整/取消任务。",
@@ -192,6 +195,15 @@ export class Leader {
       `effort: ${fc?.effort || "auto"}`,
       `identity: ${fc ? `${fc.provider}::${fc.model}` : "(unknown)"}`,
       `worker-routes: ${modelRouteText(routes)}`,
+      ...(fcValidation?.errors?.length
+        ? [`current-run-errors: ${fcValidation.errors.join("; ")}`]
+        : []),
+      ...(fcValidation?.warnings?.length
+        ? [`current-run-warnings: ${fcValidation.warnings.join("; ")}`]
+        : []),
+      ...(routeValidation.errors.length
+        ? [`route-errors: ${routeValidation.errors.join("; ")}`]
+        : []),
       "T3 的模型身份是 provider + model 二元组，不是全局唯一字符串。绝不能把模型 slug 的前缀（例如 dimcode-api-oauth）当成 provider 实例 id。",
       "用户说“用主 Run 的模型/我现在这个模型”时，使用上面的完整 provider + model + effort，不要自行拆出裸 model 后配另一个 provider。",
       "worker-routes 是用户的分工偏好：default/light/standard/deep/coding 分别对应 default/轻量/普通/探索研究/修复实现。用户说“探索用 X、修复用 Y、简单查询用 Z”时，用 set_model_routes 持久化，而不是只在回复里说记住了。",
@@ -586,6 +598,10 @@ export class Leader {
           ...Object.values(incoming).map((route) => route.model),
         ].filter(Boolean);
         assertModelRouteProviders(incoming, knownModels);
+        const validation = validateModelRoutes(this.config, incoming);
+        if (!validation.ok) {
+          throw new Error(validation.errors.join("; "));
+        }
         const stored = normalizeModelRoutes(
           getWorkerModelRoutes(this.db, masterThreadId),
         );
@@ -596,6 +612,7 @@ export class Leader {
           type: "set_model_routes",
           ok: true,
           routes: next,
+          warnings: validation.warnings,
         });
       } catch (error) {
         applied.push({
@@ -659,6 +676,23 @@ export class Leader {
               action.provider ||
               this.config.t3Provider,
           );
+          const targetValidation =
+            adapter === "t3" && plan.model
+              ? validateModelTarget(this.config, {
+                  provider,
+                  model: plan.model,
+                  effort: plan.effort,
+                })
+              : { ok: true, errors: [], warnings: [], suggestions: [] };
+          if (!targetValidation.ok) {
+            applied.push({
+              type: "add_task",
+              ok: false,
+              error: targetValidation.errors.join("; "),
+              suggestions: targetValidation.suggestions,
+            });
+            continue;
+          }
           const taskInput = {
             id: newId("tsk"),
             title: String(action.title),

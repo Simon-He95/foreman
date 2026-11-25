@@ -296,8 +296,12 @@ caches. The choice is persisted per T3 thread and reused on resume; turns are
 queued per master, and task notifications return to the master that created
 them. Check the effective values and choices with `foreman models` and
 `foreman master show`. See
-[Models and effort](docs/models-and-effort.md). Restart T3 after adding a
-provider/model so its cache refreshes.
+[Models and effort](docs/models-and-effort.md). The dashboard also has a
+**Model routing** panel: it shows the current Run's provider/model/effort and
+project, validates routes against the T3 catalog snapshot, lets you assign
+`default` / `light` / `standard` / `deep` / `coding` targets, and has a
+one-click “use current Run for all” action. Invalid targets are surfaced before
+a task starts. Restart T3 after adding a provider/model so its cache refreshes.
 
 ## Documentation
 

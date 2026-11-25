@@ -8,6 +8,7 @@ import {
   counts,
   dashboardTasks,
   getMasterFc,
+  getMasterProject,
   getMeta,
   getTask,
   getWorkerByTokenHash,
@@ -19,6 +20,7 @@ import {
   setMasterFc,
   setMasterProject,
   setMeta,
+  setWorkerModelRoutes,
   setWorkerStatus,
   stateVersion,
   touchWorker,
@@ -35,8 +37,14 @@ import { validateArtifactPath } from "./projects.mjs";
 import {
   assertT3ProviderId,
   mergeModelRoutes,
+  normalizeModelRoutes,
   planTaskModel,
 } from "./model-policy.mjs";
+import {
+  availableModelChoices,
+  validateModelRoutes,
+  validateModelTarget,
+} from "./model-catalog.mjs";
 import { WORKER_PROTOCOL_VERSION } from "./protocol.mjs";
 import {
   ensureDefaultProject,
@@ -187,6 +195,16 @@ function buildState({ db, config, daemon, leader }) {
   const names = projectNameMap(db);
   const masterThreadId = getMeta(db, "master_thread_id");
   const masterFc = masterThreadId ? getMasterFc(db, masterThreadId) : null;
+  const masterProject = masterThreadId ? getMasterProject(db, masterThreadId) : null;
+  const modelRoutes = mergeModelRoutes(
+    config.workerModelRoutes,
+    getWorkerModelRoutes(db, null),
+    getWorkerModelRoutes(db, masterThreadId),
+  );
+  const routeValidation = validateModelRoutes(config, modelRoutes);
+  const fcValidation = masterFc
+    ? validateModelTarget(config, masterFc)
+    : null;
   return {
     ok: true,
     now: Date.now(),
@@ -205,7 +223,14 @@ function buildState({ db, config, daemon, leader }) {
       model: config.leaderModel,
       effort: config.leaderEffort || null,
       masterThreadId: masterThreadId || null,
+      masterProject,
       masterFc,
+      modelRoutes,
+      modelCatalog: availableModelChoices(config),
+      modelDiagnostics: {
+        routes: routeValidation,
+        currentRun: fcValidation,
+      },
     },
     daemon: daemon ? daemon.snapshot() : null,
     stateCard: buildStateCard(db, config),
@@ -309,6 +334,69 @@ export function startServer({ db, config, daemon, leader, logger = console }) {
         }
         json(res, 200, buildState({ db, config, daemon, leader }), { etag });
         return;
+      }
+
+      if (pathname === "/api/model-routes") {
+        const masterThreadId = getMeta(db, "master_thread_id");
+        if (req.method === "GET") {
+          const routes = mergeModelRoutes(
+            config.workerModelRoutes,
+            getWorkerModelRoutes(db, null),
+            getWorkerModelRoutes(db, masterThreadId),
+          );
+          json(res, 200, {
+            ok: true,
+            masterThreadId: masterThreadId || null,
+            masterProject: masterThreadId
+              ? getMasterProject(db, masterThreadId)
+              : null,
+            masterFc: masterThreadId ? getMasterFc(db, masterThreadId) : null,
+            routes,
+            catalog: availableModelChoices(config),
+            validation: validateModelRoutes(config, routes),
+            currentRun: masterThreadId
+              ? validateModelTarget(
+                  config,
+                  getMasterFc(db, masterThreadId) || {},
+                )
+              : null,
+          });
+          return;
+        }
+        if (req.method === "PUT" || req.method === "POST") {
+          if (!masterThreadId) throw httpError(409, "no master thread is bound");
+          requireJson(req);
+          const body = await readBody(req);
+          let incoming;
+          try {
+            incoming = normalizeModelRoutes({
+              ...(body.routes || {}),
+              ...(body.all ? { all: body.all } : {}),
+            });
+          } catch (error) {
+            throw httpError(400, error.message);
+          }
+          const stored = normalizeModelRoutes(
+            getWorkerModelRoutes(db, masterThreadId),
+          );
+          const next = body.reset ? incoming : { ...stored, ...incoming };
+          const validation = validateModelRoutes(config, next);
+          if (!validation.ok) {
+            throw httpError(400, validation.errors.join("; "));
+          }
+          setWorkerModelRoutes(db, masterThreadId, next);
+          json(res, 200, {
+            ok: true,
+            routes: mergeModelRoutes(
+              config.workerModelRoutes,
+              getWorkerModelRoutes(db, null),
+              next,
+            ),
+            validation,
+          });
+          return;
+        }
+        throw httpError(405, "method not allowed");
       }
 
       if (req.method === "GET" && pathname === "/api/master/fc") {
@@ -564,6 +652,16 @@ export function startServer({ db, config, daemon, leader, logger = console }) {
           );
         } catch (error) {
           throw httpError(400, error.message);
+        }
+        if (adapter === "t3" && plan.model) {
+          const targetValidation = validateModelTarget(config, {
+            provider: taskProvider,
+            model: plan.model,
+            effort: plan.effort,
+          });
+          if (!targetValidation.ok) {
+            throw httpError(400, targetValidation.errors.join("; "));
+          }
         }
         const task = addTask(db, {
           title,

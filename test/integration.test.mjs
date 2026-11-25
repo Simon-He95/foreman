@@ -53,6 +53,7 @@ import {
   reasoningOptionFor,
   reasoningValue,
 } from "../src/model-policy.mjs";
+import { validateModelTarget } from "../src/model-catalog.mjs";
 import { notifyMaster } from "../src/notifier.mjs";
 import { resolveProjectPath, validateArtifactPath } from "../src/projects.mjs";
 import { ensureDefaultProject, resolveTaskProject } from "../src/registry.mjs";
@@ -452,6 +453,58 @@ test("user-directed routes persist per master and drive delegated tasks", async 
   }
 });
 
+test("model catalog preflight validates advertised provider/model/effort pairs", () => {
+  const dir = tempDir();
+  const home = path.join(dir, "t3-home");
+  fs.mkdirSync(path.join(home, "caches"), { recursive: true });
+  fs.writeFileSync(
+    path.join(home, "caches", "dim.json"),
+    JSON.stringify({
+      providerInstanceId: "dim",
+      displayName: "DimAgent",
+      status: "ready",
+      installed: true,
+      enabled: true,
+      models: [
+        {
+          slug: "dimcode-api-oauth/deepseek-v4.1-flash",
+          name: "DeepSeek",
+          capabilities: {
+            optionDescriptors: [
+              {
+                id: "thought_level",
+                role: "reasoning",
+                type: "select",
+                options: [{ id: "none" }, { id: "high" }, { id: "max" }],
+              },
+            ],
+          },
+        },
+      ],
+    }),
+  );
+  const config = testConfig(dir, { t3Home: home });
+  const ok = validateModelTarget(config, {
+    provider: "dim",
+    model: "dimcode-api-oauth/deepseek-v4.1-flash",
+    effort: "max",
+  });
+  assert.equal(ok.ok, true);
+  const wrongModel = validateModelTarget(config, {
+    provider: "dim",
+    model: "deepseek-flash",
+    effort: "max",
+  });
+  assert.equal(wrongModel.ok, false);
+  assert.ok(wrongModel.suggestions.length > 0);
+  const wrongEffort = validateModelTarget(config, {
+    provider: "dim",
+    model: "dimcode-api-oauth/deepseek-v4.1-flash",
+    effort: "auto",
+  });
+  assert.equal(wrongEffort.ok, false);
+});
+
 test("FC leader choices expose provider models and per-provider effort", () => {
   const dir = tempDir();
   const home = path.join(dir, "t3-home");
@@ -746,6 +799,10 @@ test("leader can defer a t3 task and import it as a running child", async () => 
     t3Provider: "dim",
     t3Model: "dim/fast",
     leaderMode: "rule",
+    leaderChoices: [
+      { provider: "dim", model: "dim/fast" },
+      { provider: "dim", model: "dim/strong" },
+    ],
   });
   const db = openDb(config.dbPath);
   try {
@@ -1380,6 +1437,41 @@ test("retry refuses live or unsafe blocked tasks", () => {
     const retried = retryTask(db, config, task.id);
     assert.equal(retried.status, "queued");
     assert.equal(retried.attempts, 0);
+
+    const t3Config = testConfig(dir, {
+      adapter: "t3",
+      t3Provider: "dim",
+      t3Model: "dimcode-api-oauth/deepseek-v4.1-flash",
+      modelStrong: "dimcode-api-oauth/gpt-6.2-astra",
+      modelCoding: "dimcode-api-oauth/claude-opus-5-5",
+      workerModelRoutes: {
+        standard: {
+          provider: "dim",
+          model: "dimcode-api-oauth/deepseek-v4.1-flash",
+          effort: "max",
+        },
+      },
+    });
+    const stale = addTask(db, {
+      title: "查上海实时天气",
+      brief: "查询温度",
+      adapter: "t3",
+      projectPath: dir,
+      provider: "dima",
+      model: "deepseek-v4.1-flash",
+      effort: "high",
+    });
+    updateTask(db, stale.id, { status: "failed", error: "model rejected" });
+    const t3Daemon = new Daemon({
+      db,
+      config: t3Config,
+      adapters: createAdapterRegistry(t3Config),
+      logger: quiet,
+    });
+    const repaired = t3Daemon.retry(stale.id);
+    assert.equal(repaired.provider, "dim");
+    assert.equal(repaired.model, "dimcode-api-oauth/deepseek-v4.1-flash");
+    assert.equal(repaired.effort, "max");
   } finally {
     db.close();
     fs.rmSync(dir, { recursive: true, force: true });
@@ -1600,6 +1692,15 @@ test("HTTP API requires a token and enforces project roots", async () => {
     const fcBody = await fc.json();
     assert.equal(fcBody.fc.provider, "dima");
     assert.equal(fcBody.fc.effort, "high");
+
+    const modelRoutes = await fetch(`${base}/api/model-routes`, {
+      headers: auth,
+    });
+    assert.equal(modelRoutes.status, 200);
+    const modelRoutesBody = await modelRoutes.json();
+    assert.equal(modelRoutesBody.masterThreadId, "mcp:http-test");
+    assert.ok(modelRoutesBody.routes);
+    assert.ok(Array.isArray(modelRoutesBody.catalog));
 
     const byName = await fetch(`${base}/api/tasks`, {
       method: "POST",

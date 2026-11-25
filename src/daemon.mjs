@@ -1,12 +1,19 @@
 import {
   appendEvent,
   appendInbox,
+  getMasterFc,
   getTask,
+  getWorkerModelRoutes,
   queuedTasks,
   runningTasks,
   updateTask,
 } from "./db.mjs";
 import { hasContract, verifyContract } from "./contract.mjs";
+import {
+  assertT3ProviderId,
+  mergeModelRoutes,
+  planTaskModel,
+} from "./model-policy.mjs";
 import { notifyMaster } from "./notifier.mjs";
 import { formatDuration } from "./state.mjs";
 
@@ -515,6 +522,45 @@ export class Daemon {
       error.status = 409;
       throw error;
     }
+    let retryTarget = {};
+    // A task that failed before a thread existed has no useful model lock to
+    // preserve. Re-plan it against the current routes so changing a model does
+    // not leave a permanently poisoned retry button.
+    if (
+      task.adapter === "t3" &&
+      ["failed", "lost"].includes(task.status) &&
+      !task.thread_id
+    ) {
+      const masterFc = task.master_thread_id
+        ? getMasterFc(this.db, task.master_thread_id)
+        : null;
+      const routes = mergeModelRoutes(
+        this.config.workerModelRoutes,
+        getWorkerModelRoutes(this.db, null),
+        getWorkerModelRoutes(this.db, task.master_thread_id),
+      );
+      const plan = planTaskModel(this.config, {
+        title: task.title,
+        brief: task.brief,
+        adapter: task.adapter,
+        provider: task.provider,
+        model: task.model,
+        effort: task.effort,
+        routes,
+        masterFc,
+      });
+      const provider = assertT3ProviderId(
+        plan.provider ||
+          this.config.forceProvider ||
+          task.provider ||
+          this.config.t3Provider,
+      );
+      retryTarget = {
+        provider,
+        model: plan.model,
+        effort: plan.effort,
+      };
+    }
     const updated = updateTask(this.db, task.id, {
       status: "queued",
       attempts: 0,
@@ -529,6 +575,7 @@ export class Daemon {
       finished_at: null,
       result: null,
       error: null,
+      ...retryTarget,
     });
     appendEvent(this.db, task.id, "manual_retry", {});
     return updated;

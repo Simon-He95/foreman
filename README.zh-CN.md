@@ -257,7 +257,11 @@ foreman add "审查支付回调" \
 ```
 
 切换 provider 时请显式设置 `modelFast`、`modelStrong`、`modelCoding` 和
-`t3ReasoningOption`。详见 [模型与 effort](docs/models-and-effort.md)。
+`t3ReasoningOption`。Dashboard 新增了 **模型分工** 面板：显示当前主 Run 的
+provider/model/effort/project，按 T3 catalog 快照校验路由，可为
+`default` / `light` / `standard` / `deep` / `coding` 指定模型，并支持一键
+“全部用当前 Run”。无效目标会在任务启动前提示。详见
+[模型与 effort](docs/models-and-effort.md)。
 
 ## 文档
 

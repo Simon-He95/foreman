@@ -96,6 +96,7 @@
       font-size: 6px;
     }
     .pill.dead { color: var(--red); }
+    .pill.warn { color: var(--ochre); }
     .goal {
       color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis;
       white-space: nowrap; min-width: 0; padding-left: 16px;
@@ -183,6 +184,70 @@
     .btn.danger:hover { background: var(--accent); color: var(--paper); }
     .btn.small { padding: 3px 8px; font-size: 10px; }
     .btn:disabled { opacity: .4; cursor: default; }
+
+    .routing-panel {
+      margin-top: 12px;
+      border: 1px solid var(--ink);
+      background: var(--paper-2);
+    }
+    .routing-panel summary {
+      display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+      cursor: pointer; padding: 9px 11px;
+      font-family: var(--mono); font-size: 10px; letter-spacing: .08em;
+      text-transform: uppercase; color: var(--dim);
+    }
+    .routing-panel summary strong { color: var(--ink); font-weight: 700; }
+    .routing-panel .route-summary {
+      flex: 1; min-width: 180px; text-align: right; color: var(--dim);
+      font-size: 9px; letter-spacing: .04em; text-transform: none;
+    }
+    .routing-body { border-top: 1px solid var(--line); padding: 11px; }
+    .run-row { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+    .run-main { flex: 1; min-width: 230px; }
+    .eyebrow {
+      display: block; margin-bottom: 3px; color: var(--accent);
+      font-family: var(--mono); font-size: 9px; letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+    .run-identity {
+      display: block; color: var(--ink); font-family: var(--mono);
+      font-size: 12px; font-weight: 600; overflow-wrap: anywhere;
+    }
+    .run-identity.warn { color: var(--ochre); }
+    .run-identity.bad { color: var(--red); }
+    .run-project { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+    .route-buttons { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .route-warnings { margin-top: 9px; color: var(--ochre); font-size: 11px; }
+    .route-warnings:empty { display: none; }
+    .route-warnings .bad { color: var(--red); }
+    .route-table { margin-top: 10px; border-top: 1px solid var(--line); }
+    .route-row {
+      display: grid; grid-template-columns: 118px minmax(220px, 1fr) 92px;
+      gap: 8px; align-items: center; padding: 7px 0;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .route-row:last-child { border-bottom: 0; }
+    .route-label { display: flex; flex-direction: column; gap: 1px; }
+    .route-label strong { color: var(--ink); font-size: 11px; font-weight: 600; }
+    .route-label span {
+      color: var(--dim); font-family: var(--mono); font-size: 9px;
+      letter-spacing: .05em;
+    }
+    .route-row select {
+      width: 100%; min-width: 0; padding: 5px 6px; border: 1px solid var(--line);
+      background: var(--paper); color: var(--ink); font-size: 10px;
+    }
+    .route-row.warn select { border-color: var(--ochre); }
+    .route-row.bad select { border-color: var(--red); }
+    .route-effort { font-family: var(--mono); }
+    .routing-foot {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line);
+    }
+    .routing-note { flex: 1; min-width: 180px; color: var(--dim); font-size: 10px; }
+    .routing-note.err { color: var(--red); }
+    .form-error { grid-column: 1 / -1; color: var(--red); font-size: 11px; min-height: 0; }
+    .form-error:empty { display: none; }
 
     .add-form {
       display: grid;
@@ -450,6 +515,29 @@
 
       <div class="live-strip" id="live-strip"></div>
 
+      <details class="routing-panel" id="routing-panel" open>
+        <summary><strong>模型分工</strong><span class="route-summary" id="route-summary"></span></summary>
+        <div class="routing-body">
+          <div class="run-row">
+            <div class="run-main">
+              <span class="eyebrow">current run</span>
+              <span class="run-identity" id="run-identity">-</span>
+              <span class="run-project" id="run-project"></span>
+            </div>
+            <div class="route-buttons">
+              <button class="btn small" id="route-use-run" type="button">全部用当前 Run</button>
+              <button class="btn small ghost" id="route-reset" type="button">清除覆盖</button>
+            </div>
+          </div>
+          <div class="route-warnings" id="route-warnings"></div>
+          <div class="route-table" id="route-table"></div>
+          <div class="routing-foot">
+            <span class="routing-note" id="routing-note">未保存的路由只影响当前 master。</span>
+            <button class="btn small primary" id="route-save" type="button">保存路由</button>
+          </div>
+        </div>
+      </details>
+
       <form class="add-form hidden" id="add-form">
         <div class="field">
           <label for="t-title">标题</label>
@@ -476,6 +564,7 @@
           <input id="t-project" list="project-options" placeholder="项目名或路径；默认 default" />
           <datalist id="project-options"></datalist>
         </div>
+        <div class="form-error" id="add-error" role="alert"></div>
         <div class="submit">
           <button class="btn primary" type="submit">添加</button>
         </div>
@@ -536,6 +625,8 @@
       online: true,
       etag: null,
       authRequired: false,
+      routeDirty: false,
+      routeSignature: null,
     };
 
     const $ = (id) => document.getElementById(id);
@@ -686,6 +777,8 @@
         metaItem("id", task.id),
         metaItem("exec", task.adapter),
         ...(task.provider ? [metaItem("provider", task.provider)] : []),
+        ...(task.model ? [metaItem("model", task.model)] : []),
+        ...(task.effort ? [metaItem("effort", task.effort)] : []),
         metaItem("project", task.projectName ? `${task.projectName} · ${task.projectShort}` : task.projectShort),
         task.thread_link
           ? el("span", {}, "thread ", el("a", { href: task.thread_link, target: "_blank", rel: "noreferrer", text: "打开线程" }))
@@ -732,6 +825,7 @@
         actions.append(el("button", {
           class: "btn small",
           type: "button",
+          title: "失败且未启动的 task 会按当前路由重算；已启动的 task 保留原模型",
           onClick: async () => {
             await taskAction(task, "retry");
           },
@@ -739,6 +833,189 @@
       }
       if (actions.childNodes.length) card.append(actions);
       return card;
+    }
+
+    const ROUTE_ROWS = [
+      ["default", "默认", "default"],
+      ["light", "轻量", "light"],
+      ["standard", "普通查询", "standard"],
+      ["deep", "探索 / 研究", "deep"],
+      ["coding", "修复 / 实现", "coding"],
+    ];
+    const EFFORTS = ["auto", "none", "high", "max"];
+
+    function routeValue(route) {
+      return route?.provider && route?.model ? `${route.provider}::${route.model}` : "";
+    }
+
+    function optionValue(route) {
+      return route?.provider && route?.model ? `${route.provider}::${route.model}` : "";
+    }
+
+    function routeOptionGroups(catalog, current) {
+      const groups = new Map();
+      const add = (choice) => {
+        const provider = choice.provider;
+        const value = `${choice.provider}::${choice.model}`;
+        if (!groups.has(provider)) groups.set(provider, new Map());
+        const models = groups.get(provider);
+        if (!models.has(value)) {
+          models.set(value, {
+            value,
+            label: `${choice.model}${choice.isCustom ? " · custom" : ""}`,
+          });
+        }
+      };
+      for (const choice of catalog || []) add(choice);
+      if (current?.provider && current?.model) {
+        add({ ...current, isCustom: false });
+      }
+      return [...groups.entries()].map(([provider, models]) => ({
+        provider,
+        models: [...models.values()],
+      }));
+    }
+
+    function appendRouteOptions(select, catalog, current) {
+      select.append(el("option", { value: "", text: "继承 tier 默认" }));
+      for (const group of routeOptionGroups(catalog, current)) {
+        select.append(el("optgroup", { label: group.provider },
+          ...group.models.map((option) =>
+            el("option", { value: option.value, text: option.label }),
+          ),
+        ));
+      }
+    }
+
+    function routeWarningFor(data, key) {
+      const result = (data.leader.modelDiagnostics?.routes?.results || []).find(
+        (entry) => entry.category === key,
+      );
+      return result && !result.ok ? "bad" : result?.warnings?.length ? "warn" : "";
+    }
+
+    function renderRouting(data, { force = false } = {}) {
+      const leader = data.leader || {};
+      const routes = leader.modelRoutes || {};
+      const catalog = leader.modelCatalog || [];
+      const fc = leader.masterFc;
+      const signature = JSON.stringify({
+        routes,
+        catalog: catalog.map((choice) => choice.id),
+        fc: fc ? `${fc.provider}::${fc.model}/${fc.effort}` : null,
+        project: leader.masterProject || null,
+      });
+      if (!force && state.routeDirty) return;
+      if (!force && signature === state.routeSignature) return;
+      state.routeSignature = signature;
+
+      $("run-identity").textContent = fc
+        ? `${fc.provider}::${fc.model} / ${fc.effort || "auto"}`
+        : "未选择主 Run 模型";
+      const runValidation = leader.modelDiagnostics?.currentRun;
+      $("run-identity").className = `run-identity${runValidation && !runValidation.ok ? " bad" : runValidation?.warnings?.length ? " warn" : ""}`;
+      $("run-project").textContent = leader.masterProject
+        ? `project ${leader.masterProject}`
+        : "project 未知";
+      $("route-summary").textContent = `${Object.keys(routes).length} 条路由 · 主 Run 不自动限制 worker`;
+      $("route-use-run").disabled = !fc?.provider || !fc?.model;
+
+      const warnings = [];
+      if (runValidation && !runValidation.ok) {
+        warnings.push(...runValidation.errors.map((error) => `主 Run：${error}`));
+      } else if (runValidation?.warnings?.length) {
+        warnings.push(...runValidation.warnings.map((warning) => `主 Run：${warning}`));
+      }
+      for (const result of leader.modelDiagnostics?.routes?.results || []) {
+        warnings.push(...result.errors.map((error) => `${result.category}：${error}`));
+        warnings.push(...result.warnings.map((warning) => `${result.category}：${warning}`));
+      }
+      $("route-warnings").replaceChildren(
+        ...warnings.map((warning) => el("div", { text: warning })),
+      );
+
+      const table = $("route-table");
+      table.replaceChildren();
+      for (const [key, label, hint] of ROUTE_ROWS) {
+        const current = routes[key] || null;
+        const modelSelect = el("select", {
+          class: "route-model",
+          "aria-label": `${label} model`,
+        });
+        appendRouteOptions(modelSelect, catalog, current);
+        modelSelect.value = routeValue(current);
+        const effortSelect = el("select", { class: "route-effort", "aria-label": `${label} effort` },
+          el("option", { value: "", text: "默认" }),
+          ...EFFORTS.map((effort) => el("option", { value: effort, text: effort })),
+        );
+        effortSelect.value = current?.effort || "";
+        const row = el("div", {
+          class: `route-row ${routeWarningFor(data, key)}`,
+          "data-route": key,
+        },
+          el("div", { class: "route-label" }, el("strong", { text: label }), el("span", { text: hint })),
+          modelSelect,
+          effortSelect,
+        );
+        const markDirty = () => {
+          state.routeDirty = true;
+          $("routing-note").className = "routing-note";
+          $("routing-note").textContent = "有未保存的路由。保存后才会影响新任务。";
+          $("route-save").disabled = false;
+        };
+        modelSelect.addEventListener("change", markDirty);
+        effortSelect.addEventListener("change", markDirty);
+        table.append(row);
+      }
+      $("routing-note").className = "routing-note";
+      $("routing-note").textContent = catalog.length
+        ? "路由只影响新任务；每个 master 独立保存。候选来自 T3 catalog 快照。"
+        : "T3 catalog 不可用；保存前无法做完整模型预检。";
+      $("route-save").disabled = false;
+    }
+
+    function collectRoutes() {
+      const routes = {};
+      for (const [key] of ROUTE_ROWS) {
+        const row = document.querySelector(`[data-route="${key}"]`);
+        if (!row) continue;
+        const model = row.querySelector(".route-model")?.value || "";
+        const effort = row.querySelector(".route-effort")?.value || "";
+        if (!model) continue;
+        const at = model.indexOf("::");
+        if (at <= 0) continue;
+        routes[key] = {
+          provider: model.slice(0, at),
+          model: model.slice(at + 2),
+          ...(effort ? { effort } : {}),
+        };
+      }
+      return routes;
+    }
+
+    async function saveModelRoutes(payload) {
+      $("route-save").disabled = true;
+      $("routing-note").className = "routing-note";
+      $("routing-note").textContent = "保存中…";
+      try {
+        const response = await apiFetch("/api/model-routes", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (response.status === 401) { showGate("令牌无效或已失效"); return; }
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        state.routeDirty = false;
+        state.routeSignature = null;
+        await refresh({ force: true });
+        $("routing-note").textContent = "已保存；下一批任务生效。";
+      } catch (error) {
+        $("routing-note").className = "routing-note err";
+        $("routing-note").textContent = `保存失败：${error.message}`;
+      } finally {
+        $("route-save").disabled = false;
+      }
     }
 
     function renderTasks(tasks) {
@@ -867,12 +1144,21 @@
       $("mode").textContent = fc
         ? `FC: ${fc.provider} / ${fc.model} / ${fc.effort}`
         : `leader: ${data.leader.mode}${data.leader.model ? " / " + data.leader.model : ""}`;
+      const fcDiagnostic = data.leader.modelDiagnostics?.currentRun;
+      $("mode").className = `pill${
+        fcDiagnostic && !fcDiagnostic.ok
+          ? " dead"
+          : fcDiagnostic?.warnings?.length
+            ? " warn"
+            : ""
+      }`;
       const workers = data.workers || [];
       const onlineWorkers = workers.filter((worker) => worker.online).length;
       $("workers").textContent = `workers ${onlineWorkers}/${workers.length}`;
       $("workers").className = `pill ${onlineWorkers ? "live" : workers.length ? "dead" : ""}`;
       $("leader-mode").textContent = data.leader.mode.toUpperCase();
       $("state-card").textContent = data.stateCard;
+      renderRouting(data);
       const uptime = data.daemon ? Math.floor(data.daemon.uptimeMs / 1000) : 0;
       $("uptime").textContent = data.daemon ? `up ${Math.floor(uptime / 60)}m${String(uptime % 60).padStart(2, "0")}s · tick #${data.daemon.ticks}` : "";
       state.authRequired = Boolean(data.auth?.required);
@@ -947,6 +1233,28 @@
       }
     }
 
+    $("route-save").addEventListener("click", () => saveModelRoutes({ routes: collectRoutes() }));
+    $("route-use-run").addEventListener("click", () => {
+      const fc = state.data?.leader?.masterFc;
+      if (!fc?.provider || !fc?.model) return;
+      const diagnostic = state.data?.leader?.modelDiagnostics?.currentRun;
+      if (diagnostic && (!diagnostic.ok || diagnostic.warnings?.length)) {
+        const warning = diagnostic.errors?.[0] || diagnostic.warnings?.[0] || "当前主 Run 没有通过完整校验";
+        if (!confirm(`当前主 Run 有警告：${warning}\n\n仍要把所有路由改成它吗？`)) return;
+      }
+      saveModelRoutes({
+        all: {
+          provider: fc.provider,
+          model: fc.model,
+          effort: fc.effort || "auto",
+        },
+      });
+    });
+    $("route-reset").addEventListener("click", () => {
+      if (!confirm("清除当前 master 的会话路由覆盖？配置里的默认路由仍会保留。")) return;
+      saveModelRoutes({ reset: true, routes: {} });
+    });
+
     $("toggle-add").addEventListener("click", () => {
       $("add-form").classList.toggle("hidden");
       if (!$("add-form").classList.contains("hidden")) $("t-title").focus();
@@ -975,6 +1283,7 @@
       if (provider) payload.provider = provider;
       if (token) payload.completionToken = token;
       if (artifact) payload.artifactPath = artifact;
+      $("add-error").textContent = "";
       const response = await apiFetch("/api/tasks", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -983,9 +1292,10 @@
       if (response.status === 401) { showGate("令牌无效或已失效"); return; }
       const data = await response.json();
       if (!response.ok) {
-        alert(data.error || "添加失败");
+        $("add-error").textContent = data.error || "添加失败";
         return;
       }
+      $("add-error").textContent = "";
       $("t-title").value = "";
       $("t-brief").value = "";
       $("t-provider").value = "";

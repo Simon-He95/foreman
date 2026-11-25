@@ -611,11 +611,13 @@ export function stateVersion(db) {
          (SELECT COUNT(*) FROM projects) AS project_count,
          (SELECT COALESCE(MAX(updated_at), 0) FROM workers) AS workers,
          (SELECT COUNT(*) FROM workers) AS worker_count,
+         (SELECT COUNT(*) FROM meta) AS meta_count,
+         (SELECT COALESCE(SUM(LENGTH(key) + LENGTH(value)), 0) FROM meta) AS meta_size,
          (SELECT COUNT(*) FROM tasks WHERE status IN ('queued', 'running', 'blocked')) AS active`,
     )
     .get();
   const bucket = Number(row.active) > 0 ? Math.floor(Date.now() / 5000) : 0;
-  return `${row.events}-${row.tasks}-${row.chat}-${row.projects}-${row.project_count}-${row.workers}-${row.worker_count}-${bucket}`;
+  return `${row.events}-${row.tasks}-${row.chat}-${row.projects}-${row.project_count}-${row.workers}-${row.worker_count}-${row.meta_count}-${row.meta_size}-${bucket}`;
 }
 
 export function backupDb(db, targetPath) {

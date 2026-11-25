@@ -89,6 +89,12 @@ function cacheChoices(config = null) {
         label: `${displayName} / ${model.name || slug}`,
         description: `${provider} · ${slug}`,
         efforts: canonicalEfforts(model),
+        isCustom: Boolean(model.isCustom),
+        providerStatus: data.status || null,
+        providerAuth: data.auth?.status || null,
+        providerInstalled: data.installed !== false,
+        providerEnabled: data.enabled !== false,
+        cacheCheckedAt: data.checkedAt || null,
       });
     }
   }

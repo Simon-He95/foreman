@@ -8,6 +8,16 @@ All notable changes to Foreman are documented here. The format follows
 
 ### Added
 
+- Dashboard **Model routing** panel with provider/model/effort validation
+  against the T3 catalog snapshot, per-category editing, “use current Run for
+  all”, and a read-only catalog-aware route summary.
+- `/api/model-routes` API for reading, validating, and updating the current
+  master's routing policy.
+- Model catalog preflight warnings for custom registrations and unavailable
+  targets before a T3 task starts.
+- Failed tasks that never got a thread are re-planned against the current
+  routes on retry, instead of preserving a stale provider/model.
+
 - User-directed worker model routes (`workerModelRoutes` / `set_model_routes`)
   keyed by `default`, `light`, `standard`, `deep`, and `coding`, with a
   `modelOverride` escape hatch for one-off requests.
