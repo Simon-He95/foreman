@@ -43,9 +43,34 @@ Foreman 提供控制面：排队、租约、重试、恢复、完成契约和状
 
 T3 可以单独使用；Foreman 也可以在 `mock` 模式下完全不依赖 T3 运行。
 
+## 先选路径
+
+| 目标 | 前置条件 | 首次耗时 | 开始 |
+| --- | --- | --- | --- |
+| 看账本和面板 | Node.js >= 22.5 | 约 2 分钟 | `npm install && npm run demo -- --duration 20` |
+| 常驻 mock 控制面 | Node.js >= 22.5 | 约 3 分钟 | `foreman init --yes --adapter mock` 后 `foreman up` |
+| 跑真实编码 Agent | Node + T3 Code + 已认证的 ACP provider | 10–20 分钟 | [T3 配置](#在-t3-里使用) |
+| 在 T3 里和 Foreman 对话 | 真实路径 + 已注册 provider | 再加 5 分钟 | `foreman master create` |
+
+Foreman **不包含 T3 Code，也不包含模型 provider**。T3 是执行层和 worker UI；
+DimAgent、Codex、Claude 等 ACP provider 提供模型和工具。目前没有一键桌面安装包，
+npm 包也还没有发布，**从源码安装是当前唯一支持的路径**。
+
+| 依赖 | 用途 | 说明 |
+| --- | --- | --- |
+| Node.js >= 22.5 | 全部功能 | 使用 `node:sqlite` |
+| T3 Code 0.1.x | 真实 worker / T3 主控 | 独立 app/server；当前验证版本 `0.1.11` |
+| ACP provider + 登录 | 真实 worker | DimAgent 是验证路径；Codex/Claude 通过 T3 配置 |
+| Git 项目目录 | 真实 worker | 原生 Lineage 要求主控和任务在同一 T3 项目 |
+| macOS / Linux | 已验证平台 | Windows 未验证；launchd 仅 macOS |
+| 端口 `3773` / `3777` | T3 / Foreman 面板 | 冲突时自行修改 |
+
+不安装 T3 也可以运行 mock demo 和面板；mock 任务只验证队列、租约、重试、通知和 UI，
+不会改代码，也不会调用模型。
+
 ## 快速开始
 
-要求 Node.js **>= 22.5**（使用 `node:sqlite`）。真实 worker 需要 T3；demo 不需要模型。
+要求 Node.js **>= 22.5**。真实 worker 需要 T3 和已认证的 ACP provider；demo 和 mock 模式不需要。
 
 ```bash
 git clone https://github.com/Simon-He95/foreman.git
@@ -100,24 +125,31 @@ foreman ask "现在谁在跑，队列里还有什么，卡在哪？"
 
 ## 在 T3 里使用
 
+T3 Code 是**独立依赖**：需要你自己安装/启动 T3、把项目加进去，并在 T3 里
+登录至少一个 ACP provider。注册 Foreman provider 后必须重启 T3，新的
+**Foreman (control plane)** provider 才会出现。
+
 ```bash
-# 1. 启动 T3 并添加项目
+# 1. 确认版本、启动 T3、添加项目
+npx t3@latest --version
 npx t3@latest serve --no-browser --port 3773
-npx t3@latest project add .
+npx t3@latest project add /path/to/your/repo
 
-# 2. 注册 Foreman provider；DimAgent worker 可选
+# 2. 在 T3 里登录 provider，然后注册 Foreman
+#    DimAgent 是可选的；用你已有的 provider 即可
 npm run t3:register-foreman
-npm run t3:register-dim
+npm run t3:register-dim   # 只有使用 DimAgent 时才需要
 
-# 3. 重启 T3，启动 Foreman
+# 3. 重启 T3，再启动 Foreman
 foreman up --adapter t3 --leader dim
 
-# 4. 创建接收任务通知的主控线程
+# 4. 创建接收通知的 T3 主控线程
 foreman master create --title "Foreman"
 ```
 
 然后在 T3 新建 thread，provider 选 **Foreman (control plane)**，直接说话。
-主控只读状态、建/取消/重试任务；真正干活的是 worker 线程。
+主控只读状态、建/取消/重试任务；真正干活的是 worker 线程。也可以不用主控，
+直接用面板/CLI；主控只是增加 T3 内对话和完成通知。
 
 已有主控线程时：
 

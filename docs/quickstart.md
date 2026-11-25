@@ -1,132 +1,234 @@
 # Quickstart
 
-## 0. Prerequisites
+Foreman is a control plane for coding-agent fleets. It is **not** an agent
+runtime and **does not install T3 Code or a model for you**. Pick the path that
+matches what you want.
 
-- macOS or Linux, Node **22.5+**
-- [T3 Code](https://t3.codes) running for the real (non-mock) path
-- At least one ACP provider enabled in T3:
-  - DimAgent (`dim`) is the tested path in this repo
-  - Codex / Claude are supported by T3 and can be used with config changes
-- A project directory to work on
+| Path | What you get | Needs | Time |
+| --- | --- | --- | --- |
+| A. See it | mock tasks, dashboard, ledger, completion wakeups | Node.js >= 22.5 | ~2 min |
+| B. Mock control plane | persistent dashboard/API with mock workers | Node.js >= 22.5 | ~5 min |
+| C. Real agents | T3 threads that edit a real project | Node + T3 Code + authenticated ACP provider | 10–20 min |
+| D. T3 master | chat with Foreman inside T3 and receive notifications | C + registered Foreman provider | +5 min |
 
-## 1. Trial mode (no model, no T3)
+## Dependencies
+
+| Dependency | Required for | Notes |
+| --- | --- | --- |
+| Node.js **>= 22.5** | everything | Foreman uses `node:sqlite` |
+| T3 Code `0.1.x` | real workers and the T3 master | separate app/server; tested with `0.1.11` |
+| ACP provider + authentication | real workers | DimAgent is the reference path; Codex/Claude work through T3 |
+| A project directory | real workers | use a Git repo; native lineage requires one T3 project |
+| macOS or Linux | tested platforms | Windows is untested; macOS launchd service is macOS-only |
+| Port `3773` | T3 Code | change it if occupied |
+| Port `3777` | Foreman dashboard | change it if occupied |
+
+There is currently **no one-click desktop installer** and the npm package is
+not published yet. Install from a source checkout:
 
 ```bash
+git clone https://github.com/Simon-He95/foreman.git
+cd foreman
 npm install
+npm test
+```
+
+To use the short `foreman` command instead of `node src/cli.mjs`, install it
+locally:
+
+```bash
+npm install -g .
+```
+
+## A. See it in 2 minutes (no T3, no model)
+
+```bash
+cd foreman
 npm run demo -- --duration 20
 ```
 
-This starts a mock-ledger demo. To run the real dashboard and mock tasks:
+The demo runs a mock fleet, claims tasks, wakes the leader on completion, and
+prints the briefing. This proves the queue, leases, retries, inbox, and state
+card without a model or T3. It does **not** edit your code.
+
+## B. Persistent mock control plane (no T3, no model)
 
 ```bash
-node src/cli.mjs doctor
-npm start
+foreman init --yes \
+  --adapter mock \
+  --leader rule \
+  --project . \
+  --data-dir .foreman \
+  --port 3777
+
+foreman up
 ```
 
-Open `http://127.0.0.1:3777`, then submit a mock task from the dashboard. No
-model quota is used.
+Open `http://127.0.0.1:3777`, click **+ 新任务**, and use the dashboard. This is
+useful for evaluating the UI/API and for developing against the ledger. Mock
+tasks are simulated and do not run a real coding agent.
 
-## 2. Configure a real project
+Without `npm install -g .`, substitute `node src/cli.mjs` for `foreman`.
+
+## C. Real agents with T3 Code
+
+You need three separate pieces:
+
+1. **Node.js** for Foreman.
+2. **T3 Code** as the execution layer and worker UI.
+3. **An ACP provider** configured and authenticated inside T3, such as DimAgent,
+   Codex, or Claude. Foreman does not supply the model.
+
+### C1. Start T3 and add the project
+
+Use the desktop app, or run the T3 server:
 
 ```bash
-node src/cli.mjs init
+npx t3@latest --version
+npx t3@latest serve --no-browser --port 3773
+npx t3@latest project add /path/to/your/repo
 ```
 
-The wizard asks for:
+Keep T3 running. In T3, confirm the project exists and your provider is
+authenticated before involving Foreman.
 
-- project directory
-- adapter (`mock` for trial, `t3` for real workers)
-- provider and worker model (for `t3`)
-- leader backend (`dim` for the tested real path)
-- data directory and dashboard port
-- whether to register the `foreman` provider in T3
+### C2. Register the Foreman provider
 
-It writes `foreman.config.json` in the current directory. For non-interactive
-setup:
-
-```bash
-node src/cli.mjs init --yes \
-  --project /path/to/project \
-  --adapter t3 \
-  --provider dim \
-  --model dimcode-api-oauth/deepseek-v4.1-flash \
-  --leader dim
-```
-
-Register the T3 provider once:
+From the Foreman source checkout:
 
 ```bash
 npm run t3:register-foreman
 ```
 
-Then restart T3 so the **Foreman (control plane)** provider appears.
-
-## 3. Start the control plane
+If you use DimAgent as the worker, also register its ACP wrapper:
 
 ```bash
-node src/cli.mjs doctor
-npm start
+npm run t3:register-dim
 ```
 
-The control plane listens on `127.0.0.1:3777` by default and opens the
-dashboard. Keep this process running; it owns the task ledger and the daemon.
+**Restart T3 after registration.** A new provider is not visible in an already
+running T3 process. The new T3 thread will show **Foreman (control plane)**.
 
-## 4. Create the master thread
-
-Use a T3 thread **in the same project** whose provider is **Foreman (control
-plane)** and model is `default`.
-
-Or create/bind it from the CLI:
+### C3. Configure Foreman
 
 ```bash
-node src/cli.mjs master create --title "Foreman 主控"
+foreman init
 ```
 
-The printed thread is the notification target. Pin it in T3.
+Choose:
 
-> Native lineage requires the master and worker task to be in the same T3
-> project. A Scratch master can still chat, but its tasks fall back to top-level
-> threads.
+- adapter: `t3`
+- project: the same project you added to T3
+- provider: `dim`, `codex`, or `claudeAgent`
+- worker model: a model valid for that provider
+- leader: `dim`, `codex`, `claude`, or `rule`
 
-## 5. Run the first task
-
-In the master thread:
-
-```text
-调研这个仓库最近一个月的提交趋势，输出一份简报。
-```
-
-or explicitly select a model/effort:
-
-```text
-用最强模型，思考开到最大，审查支付回调的并发和幂等。
-```
-
-Expected result:
-
-1. the master creates a child T3 thread (`relationship=subagent`)
-2. Foreman records it as a running task
-3. the child completes
-4. the master receives a completion notification with a thread link
-
-## 6. Verify
+Or use flags (the model below is a DimAgent example; replace it for another
+provider):
 
 ```bash
-node src/cli.mjs status
-node src/cli.mjs master show
+foreman init --yes \
+  --adapter t3 \
+  --project /path/to/your/repo \
+  --provider dim \
+  --model dimcode-api-oauth/deepseek-v4.1-flash \
+  --leader dim \
+  --register
 ```
 
-The dashboard and `status` are authoritative. If a provider/model is wrong,
-`doctor` and the T3 provider log are the first places to look.
+`--register` runs the Foreman provider setup. You still need to restart T3 if it
+was already running.
 
-## Troubleshooting
+### C4. Start Foreman
 
-- **No Foreman provider in T3** — run `npm run t3:register-foreman`, restart T3.
-- **Provider could not start / cannot resume** — make sure `npm start` is healthy
-  and retry; Foreman advertises `session/resume`.
-- **Task blocked on completion contract** — the worker must print the token on
-  its own line; Foreman appends that instruction when creating a task.
-- **No notification** — run `node src/cli.mjs master show`; if the bound thread
-  was deleted, create a new master with `master create`.
+```bash
+foreman doctor
+foreman up
+```
 
-See [Troubleshooting](troubleshooting.md) for details.
+The dashboard is at `http://127.0.0.1:3777`. T3 stays on `:3773`.
+
+### C5. Use it
+
+From the dashboard or CLI:
+
+```bash
+foreman add "Fix the flaky login test" \
+  --brief "Find the race and add a regression test" \
+  --priority 80
+
+foreman status
+foreman ask "What is running and what is blocked?"
+```
+
+Foreman asks T3 to create the worker thread, then polls it, enforces the lease
+and optional completion contract, and records the result.
+
+## D. Talk to Foreman inside T3
+
+The T3 master is optional. It gives you a T3 chat thread with Foreman and
+completion/failure notifications; the dashboard remains the authoritative ops
+surface.
+
+```bash
+foreman master create --title "Foreman"
+```
+
+Then in T3:
+
+1. Create a new thread.
+2. Choose provider **Foreman (control plane)** and model `default`.
+3. Ask for work in natural language.
+4. Foreman creates child T3 threads for tasks and reports completions.
+
+Native lineage requires the master thread and the task to be in the **same T3
+project**. A master in another project, or a Scratch thread, still chats but
+falls back to top-level worker threads.
+
+If you already have a master:
+
+```bash
+foreman master set mcp:<thread-id>
+foreman master show
+foreman master test
+```
+
+## Verify the install
+
+```bash
+foreman doctor
+foreman status
+foreman master show
+```
+
+- `doctor` checks Node, T3, provider CLIs, database, port, and auth.
+- `status` is the authoritative task card.
+- `master show` confirms the notification target.
+
+## What is genuinely one-click?
+
+Only the mock demo is close:
+
+```bash
+npm install && npm run demo -- --duration 20
+```
+
+Real agents are not one-click because T3 must be installed, a provider must be
+authenticated, T3 must be restarted after provider registration, and the master
+must be in the same project for native lineage. Expect **10–20 minutes** for the
+first real setup and much less afterwards.
+
+## First-run troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| No **Foreman (control plane)** provider | Run `npm run t3:register-foreman`, then fully restart T3. |
+| T3 is running but Foreman cannot start threads | Check `foreman doctor`, the T3 port, and the provider/model in `foreman.config.json`. |
+| Task runs at top level instead of under the master | Master and task are in different T3 projects, or the master is a Scratch provider. |
+| No completion notification | `foreman master show`; rebind with `foreman master set mcp:<id>` if the thread was deleted. |
+| Dashboard port is busy | Change `port` in `foreman.config.json` or pass `--port`. |
+| `foreman: command not found` | Run `npm install -g .` or use `node src/cli.mjs` from the checkout. |
+| npm install fails on old Node | Upgrade to Node 22.5+; `node:sqlite` is required. |
+
+For deeper setup, see [Configuration](configuration.md), [Workers](workers.md),
+and [Troubleshooting](troubleshooting.md).

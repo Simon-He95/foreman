@@ -54,10 +54,38 @@ T3 can run without Foreman. Foreman can run without T3 in `mock` mode. Together
 they give an agent fleet a durable, inspectable memory and a single source of
 truth.
 
+## Choose a path
+
+| Goal | Needs | First-run time | Start |
+| --- | --- | --- | --- |
+| See the ledger and dashboard | Node.js >= 22.5 | ~2 min | `npm install && npm run demo -- --duration 20` |
+| Run a mock control plane | Node.js >= 22.5 | ~3 min | `foreman init --yes --adapter mock` then `foreman up` |
+| Run real coding agents | Node.js + T3 Code + an authenticated ACP provider | 10–20 min | [T3 setup](#use-with-t3-code) |
+| Chat with Foreman inside T3 | the real path + a registered provider | +5 min | `foreman master create` |
+
+Foreman does **not** bundle T3 Code and does **not** include a model provider.
+T3 is the execution layer and worker UI; a provider such as DimAgent, Codex, or
+Claude supplies the model and tools. There is no one-click desktop installer
+yet, and the npm package is not published yet: source checkout is the supported
+install path today.
+
+| Dependency | Required for | Notes |
+| --- | --- | --- |
+| Node.js >= 22.5 | everything | uses `node:sqlite` |
+| T3 Code 0.1.x | real agents, T3 master | separate app/server; tested with `0.1.11` |
+| ACP provider + auth | real agents | DimAgent is the reference path; Codex/Claude work through T3 |
+| Git project directory | real agents | native lineage needs the master and task in the same T3 project |
+| macOS or Linux | tested platforms | Windows is untested; launchd service is macOS-only |
+| Ports `3773` / `3777` | T3 / Foreman dashboard | change them if occupied |
+
+If you do not install T3, you can still run the mock demo and the dashboard.
+Mock tasks exercise the queue, leases, retries, notifications, and UI; they do
+not edit your code or run a model.
+
 ## Quickstart
 
-Requirements: Node.js **>= 22.5** (Foreman uses `node:sqlite`). T3 Code is only
-needed for real worker threads; the demo uses a local mock adapter.
+Requirements: Node.js **>= 22.5**. T3 Code is only needed for real worker
+threads; the demo and mock control plane use a local adapter.
 
 ### 1. Install from source
 
@@ -82,7 +110,8 @@ npm run demo -- --duration 20
 
 This starts a control plane, dispatches mock tasks, wakes the leader on
 completion, and prints the briefing. The demo is intentionally isolated from
-your normal data directory.
+your normal data directory. It does not need T3 or a model, and it does not edit
+your project.
 
 ### 3. Run the wizard
 
@@ -130,19 +159,24 @@ foreman ask "What is running, what is queued, and what is blocking?"
 
 ## Use with T3 Code
 
-T3 is the worker UI. Foreman can run in front of it and keep the operational
-state outside the model context.
+T3 Code is a **separate dependency**: install/start it yourself, add the project,
+and authenticate at least one ACP provider. Foreman can run in front of it and
+keep the operational state outside the model context. The provider registration
+below requires a T3 restart before the **Foreman (control plane)** provider
+appears.
 
 ```bash
-# 1. Install T3 and add a project
+# 1. Verify, start T3, and add your project
+npx t3@latest --version
 npx t3@latest serve --no-browser --port 3773
-npx t3@latest project add .
+npx t3@latest project add /path/to/your/repo
 
-# 2. Register the Foreman provider and, optionally, DimAgent as a worker
+# 2. Authenticate your ACP provider in T3, then register Foreman
+#    DimAgent is optional; use the provider you already have.
 npm run t3:register-foreman
-npm run t3:register-dim
+npm run t3:register-dim   # only if you use DimAgent
 
-# 3. Restart T3, then start Foreman
+# 3. Restart T3 so the new provider appears, then start Foreman
 foreman up --adapter t3 --leader dim
 
 # 4. Create the T3 master thread that receives notifications
@@ -151,7 +185,8 @@ foreman master create --title "Foreman"
 
 Then create a T3 thread with provider **Foreman (control plane)** and talk to
 it normally. The master thread only reads state and creates/cancels/retries
-tasks; work happens in worker threads.
+tasks; work happens in worker threads. You can also skip the master and use the
+dashboard/CLI; the master is what adds in-T3 chat and completion notifications.
 
 If you already have a master thread:
 
