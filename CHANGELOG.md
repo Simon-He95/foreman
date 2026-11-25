@@ -4,13 +4,17 @@ All notable changes to Foreman are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.3] - 2026-11-25
 
 ### Added
 
-- `npm run release` one-command release flow: bumpp version prompt, preflight,
-  tests, npm publish/approval with one OTP prompt, registry verification,
-  commit, tag, and push. `npm run release:dry` performs a non-mutating pack check.
+- `npm run release` one-command release flow with a bumpp version prompt.
+
+### Fixed
+
+- Simple read-only research with API URLs or "代码搜索" in its brief is now
+  `standard` (fast model) instead of `coding` (Opus). Only tasks with an actual
+  edit intent select the coding model.
 
 ## [0.1.2] - 2026-11-25
 

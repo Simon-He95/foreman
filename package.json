@@ -1,6 +1,6 @@
 {
   "name": "foreman-ops",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Always-on control plane for coding-agent fleets on T3 Code: durable task ledger, leases, retries, and accurate status.",
   "type": "module",
   "license": "MIT",
