@@ -12,6 +12,15 @@ const EFFORT_ALIASES = {
 
 export const EFFORT_LEVELS = ["auto", "none", "high", "max"];
 
+export function reasoningOptionFor(provider, fallback = null) {
+  const id = String(provider || "").trim();
+  // T3 providers do not share the same model-option id for reasoning effort.
+  if (id === "dim") return "thought_level";
+  if (id === "codex") return "reasoningEffort";
+  if (id === "dima" || id === "claudeAgent") return "effort";
+  return fallback || "effort";
+}
+
 export function normalizeEffort(value) {
   if (value === null || value === undefined) return null;
   const raw = String(value).trim().toLowerCase();

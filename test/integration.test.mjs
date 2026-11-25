@@ -42,6 +42,7 @@ import { Leader, LeaderLoop } from "../src/leader.mjs";
 import {
   inferUserModelPreference,
   planTaskModel,
+  reasoningOptionFor,
   reasoningValue,
 } from "../src/model-policy.mjs";
 import { notifyMaster } from "../src/notifier.mjs";
@@ -215,6 +216,10 @@ test("model policy chooses by difficulty and honors explicit overrides", () => {
     reasoningValue("dimcode-api-oauth/deepseek-v4.1-flash", "max"),
     "max",
   );
+  assert.equal(reasoningOptionFor("dim"), "thought_level");
+  assert.equal(reasoningOptionFor("dima"), "effort");
+  assert.equal(reasoningOptionFor("codex"), "reasoningEffort");
+  assert.equal(reasoningOptionFor("claudeAgent"), "effort");
 });
 
 test("T3 adapter passes the task model and reasoning effort", async () => {
@@ -251,6 +256,24 @@ test("T3 adapter passes the task model and reasoning effort", async () => {
     const optionAt = args.indexOf("--option");
     assert.equal(args[optionAt + 1], "thought_level=max");
     assert.match(args.join("\n"), /完成后最后单独一行输出：TASK_DONE/);
+
+    await adapter.start({
+      project_path: dir,
+      title: "跨 provider 推理选项",
+      brief: "只回复 OK",
+      provider: "dima",
+      model: "deepseek-v4.1-flash",
+      effort: "high",
+    });
+    const crossProviderArgs = fs.readFileSync(out, "utf8").trimEnd().split("\n");
+    assert.equal(
+      crossProviderArgs[crossProviderArgs.indexOf("--provider") + 1],
+      "dima",
+    );
+    assert.equal(
+      crossProviderArgs[crossProviderArgs.indexOf("--option") + 1],
+      "effort=high",
+    );
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

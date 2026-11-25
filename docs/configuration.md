@@ -39,7 +39,7 @@ node src/cli.mjs init
 | `t3Model` | `FOREMAN_T3_MODEL` | default worker model |
 | `t3Worktree` | `FOREMAN_T3_WORKTREE` | create a worktree per thread |
 | `t3WorktreeBase` | `FOREMAN_T3_WORKTREE_BASE` | worktree base ref |
-| `t3ReasoningOption` | `FOREMAN_T3_REASONING_OPTION` | `thought_level` for Dim, `effort` for others |
+| `t3ReasoningOption` | `FOREMAN_T3_REASONING_OPTION` | fallback reasoning option for custom providers; built-ins auto-map (`dim`→`thought_level`, `dima`/`claudeAgent`→`effort`, `codex`→`reasoningEffort`) |
 | `modelFast` | `FOREMAN_MODEL_FAST` | light/standard model |
 | `modelStrong` | `FOREMAN_MODEL_STRONG` | deep/research model |
 | `modelCoding` | `FOREMAN_MODEL_CODING` | coding/refactor model |

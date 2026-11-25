@@ -43,8 +43,8 @@ or:
 ```
 
 The leader writes `model` and `effort` into the `add_task` action. The ACP agent
-passes them to T3 `delegate_task` as `target.model` and
-`target.options = [{id: "thought_level", value: ...}]`.
+passes them to T3 `delegate_task` as `target.model` and a provider-specific
+`target.options = [{id: "<reasoning option>", value: ...}]`.
 
 CLI:
 
@@ -60,8 +60,10 @@ node src/cli.mjs add "review migration" \
 - DimAgent: `thought_level`; values vary by model. Foreman maps the user-facing
   `max` to the model's top value (`xhigh` for newer GPT/Claude models, `max` for
   flash models).
-- Other providers: set `t3ReasoningOption` to the option id they expose
-  (often `effort`).
+- Rust DimAgent (`dima`), Claude Agent (`claudeAgent`): `effort`.
+- Codex: `reasoningEffort`.
+- `t3ReasoningOption` is only a fallback for custom providers; built-in ids map
+  automatically per task, so per-task provider overrides stay valid.
 
 If T3 rejects an option, the daemon records the error on the task. Check
 `orchestrator_capabilities` in T3 for the exact id/value list for a model.

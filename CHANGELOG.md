@@ -12,7 +12,9 @@ All notable changes to Foreman are documented here. The format follows
   backend; `foreman init --leader-model/--leader-effort` and `foreman models`
   expose the master/leader policy separately from worker tiers.
 - Per-task `provider` selection through CLI `--provider`, `POST /api/tasks`,
-  task cards, and leader `add_task` actions.
+  task cards, and leader `add_task` actions. Reasoning option ids are selected
+  per provider (`thought_level`, `effort`, `reasoningEffort`), including when a
+  task overrides the default provider.
 - `forceModel` / `forceProvider` hard locks for deployments that require every
   worker thread to use one model/provider.
 - T3 provider registration for the Rust DimAgent alpha (`dima`) and a dedicated

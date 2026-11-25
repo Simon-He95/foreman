@@ -1,5 +1,9 @@
 import { spawn } from "node:child_process";
-import { normalizeEffort, reasoningValue } from "../model-policy.mjs";
+import {
+  normalizeEffort,
+  reasoningOptionFor,
+  reasoningValue,
+} from "../model-policy.mjs";
 
 function run(bin, args, { cwd, env, timeoutMs = 120000 } = {}) {
   return new Promise((resolve, reject) => {
@@ -255,10 +259,14 @@ export class T3Adapter {
       const effort = normalizeEffort(task.effort);
       if (provider && effectiveModel) {
         args.push("--provider", provider, "--model", effectiveModel);
-        if (effort && effort !== "auto" && this.reasoningOption) {
+        const reasoningOption = reasoningOptionFor(
+          provider,
+          task.reasoningOption || this.reasoningOption,
+        );
+        if (effort && effort !== "auto" && reasoningOption) {
           args.push(
             "--option",
-            `${this.reasoningOption}=${reasoningValue(effectiveModel, effort)}`,
+            `${reasoningOption}=${reasoningValue(effectiveModel, effort)}`,
           );
         }
       }

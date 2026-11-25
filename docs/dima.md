@@ -81,14 +81,16 @@ for everything. Edit `foreman.config.json`:
   "t3Model": "provider/model-from-dima",
   "modelFast": "provider/fast-model",
   "modelStrong": "provider/strong-model",
-  "modelCoding": "provider/coding-model",
-  "t3ReasoningOption": "effort"
+  "modelCoding": "provider/coding-model"
 }
 ```
 
-The exact reasoning option id is provider-specific. Use `effort` for the Rust
-alpha when T3 exposes it; if T3 rejects the value, inspect the provider's
-`orchestrator_capabilities` and set `t3ReasoningOption` accordingly.
+Foreman automatically uses the right reasoning option id per provider:
+`dim` uses `thought_level`, `dima` uses `effort`, `codex` uses
+`reasoningEffort`, and `claudeAgent` uses `effort`. `t3ReasoningOption` is only
+a fallback for custom providers; it is not needed for the built-in ids. If a
+custom provider rejects the value, inspect its `orchestrator_capabilities` and
+set `t3ReasoningOption` accordingly.
 
 ## Permissions
 

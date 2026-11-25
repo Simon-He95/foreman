@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { reasoningValue } from "../src/model-policy.mjs";
+import { reasoningOptionFor, reasoningValue } from "../src/model-policy.mjs";
 
 // ACP provider that turns a T3 thread into a chat surface for the Foreman
 // control plane. It does not execute tasks itself; it forwards prompts to
@@ -321,10 +321,10 @@ async function delegatePendingTasks(applied, session) {
       if (task.effort && task.effort !== "auto") {
         target.options = [
           {
-            id:
-              task.reasoningOption ||
-              config.t3ReasoningOption ||
-              "thought_level",
+            id: reasoningOptionFor(
+              target.providerInstanceId,
+              task.reasoningOption || config.t3ReasoningOption,
+            ),
             value: reasoningValue(task.model, task.effort),
           },
         ];

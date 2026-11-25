@@ -33,7 +33,7 @@ import {
   upsertWorker,
 } from "./db.mjs";
 import { Leader, LeaderLoop } from "./leader.mjs";
-import { modelCatalog, planTaskModel } from "./model-policy.mjs";
+import { modelCatalog, planTaskModel, reasoningOptionFor } from "./model-policy.mjs";
 import { notifyMaster } from "./notifier.mjs";
 import { validateArtifactPath } from "./projects.mjs";
 import {
@@ -491,6 +491,12 @@ async function commandModels(flags) {
       },
       provider: config.t3Provider || null,
       reasoningOption: config.t3ReasoningOption || null,
+      reasoningOptions: {
+        dim: reasoningOptionFor("dim"),
+        dima: reasoningOptionFor("dima"),
+        codex: reasoningOptionFor("codex"),
+        claudeAgent: reasoningOptionFor("claudeAgent"),
+      },
       forceProvider: config.forceProvider || null,
       forceModel: config.forceModel || null,
       fast: catalog.fast,
@@ -507,7 +513,9 @@ async function commandModels(flags) {
     );
     console.log(`provider          ${payload.provider || "(not set)"}`);
     console.log(`force             ${payload.forceProvider || "-"} / ${payload.forceModel || "-"}`);
-    console.log(`reasoning option  ${payload.reasoningOption || "(not set)"}`);
+    console.log(
+      `reasoning option  ${payload.reasoningOption || "(not set)"} (fallback; dim/dima/codex/claude auto)`,
+    );
     console.log(`fast              ${payload.fast || "(provider default)"}`);
     console.log(`strong            ${payload.strong || "(provider default)"}`);
     console.log(`coding            ${payload.coding || "(provider default)"}`);
