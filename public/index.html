@@ -863,7 +863,10 @@
       renderChat(data.chat);
       document.title = `Foreman · ${data.counts.running} 跑 / ${data.counts.queued} 排 / ${data.counts.blocked} 等人`;
       $("goal").textContent = data.goal;
-      $("mode").textContent = `leader: ${data.leader.mode}${data.leader.model ? " / " + data.leader.model : ""}`;
+      const fc = data.leader.masterFc;
+      $("mode").textContent = fc
+        ? `FC: ${fc.provider} / ${fc.model} / ${fc.effort}`
+        : `leader: ${data.leader.mode}${data.leader.model ? " / " + data.leader.model : ""}`;
       const workers = data.workers || [];
       const onlineWorkers = workers.filter((worker) => worker.online).length;
       $("workers").textContent = `workers ${onlineWorkers}/${workers.length}`;

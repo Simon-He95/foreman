@@ -734,6 +734,50 @@ export function setMeta(db, key, value) {
   ).run(key, value);
 }
 
+export function setMasterFc(db, threadId, fc) {
+  if (!threadId || !fc) return;
+  setMeta(
+    db,
+    `master_fc:${threadId}`,
+    JSON.stringify({
+      provider: String(fc.provider || ""),
+      model: String(fc.model || ""),
+      effort: String(fc.effort || "auto"),
+      label: fc.label ? String(fc.label) : undefined,
+      updated_at: Date.now(),
+    }),
+  );
+}
+
+export function getMasterFc(db, threadId) {
+  if (!threadId) return null;
+  const raw = getMeta(db, `master_fc:${threadId}`);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function listMasterFcs(db) {
+  return db
+    .prepare("SELECT key, value FROM meta WHERE key LIKE 'master_fc:%' ORDER BY key")
+    .all()
+    .map((row) => {
+      let value = null;
+      try {
+        value = JSON.parse(row.value);
+      } catch {
+        // ignore malformed optional metadata
+      }
+      return { threadId: row.key.slice("master_fc:".length), ...(value || {}) };
+    })
+    .filter((row) => row.provider && row.model);
+}
+
 export function safeJson(text) {
   try {
     return JSON.parse(text);

@@ -8,6 +8,8 @@ import {
   runningTasks,
   queuedTasks,
   recentEvents,
+  getMasterFc,
+  getMeta,
 } from "./db.mjs";
 
 export const STATUS_LABEL = {
@@ -99,6 +101,17 @@ export function buildStateCard(db, config, { maxItems = 12 } = {}) {
     `FOREMAN 状态卡（权威数据，来自 SQLite；生成于 ${new Date().toLocaleString("zh-CN", { hour12: false })}）`,
   );
   lines.push(`GOAL: ${config.goal}`);
+  const masterThreadId = getMeta(db, "master_thread_id");
+  const masterFc = masterThreadId ? getMasterFc(db, masterThreadId) : null;
+  if (masterFc) {
+    lines.push(
+      `FC: ${masterFc.provider} / ${masterFc.model} / effort ${masterFc.effort || "auto"} (master ${masterThreadId})`,
+    );
+  } else {
+    lines.push(
+      `FC: ${config.leaderProvider || config.leaderMode} / ${config.leaderModel || "(config default)"} / effort ${config.leaderEffort || "auto"}`,
+    );
+  }
   lines.push(
     `EXECUTION: ${config.executionMode === "worker" ? "worker (daemon only schedules; registered workers execute)" : "local (daemon executes tasks itself)"}`,
   );

@@ -19,6 +19,7 @@ import {
   counts,
   dashboardTasks,
   getProject,
+  getMasterFc,
   getMeta,
   getTask,
   openDb,
@@ -26,6 +27,7 @@ import {
   revokeWorkerToken,
   SCHEMA_VERSION,
   schemaVersion,
+  setMasterFc,
   setMeta,
   setWorkerStatus,
   setWorkerToken,
@@ -784,6 +786,14 @@ async function commandMaster(flags, positional = []) {
     if (action === "show") {
       const threadId = getMeta(db, "master_thread_id");
       console.log(threadId ? `master thread: ${threadId}` : "master thread: (not set)");
+      if (threadId) {
+        const fc = getMasterFc(db, threadId);
+        if (fc) {
+          console.log(
+            `FC: ${fc.provider || "-"} / ${fc.model || "-"} / effort ${fc.effort || "auto"}`,
+          );
+        }
+      }
       return;
     }
     if (action === "set") {
@@ -859,6 +869,11 @@ async function commandMaster(flags, positional = []) {
       const data = JSON.parse(line);
       if (!data.threadId) throw new Error("t3 did not return a threadId");
       setMeta(db, "master_thread_id", data.threadId);
+      setMasterFc(db, data.threadId, {
+        provider: selectedLeader.provider,
+        model: selectedLeader.model,
+        effort: selectedLeader.effort,
+      });
       console.log(`master thread created: ${data.threadId}`);
       return;
     }
@@ -1203,6 +1218,11 @@ async function commandDoctor(flags) {
     config.dimBin,
     config.dimBin !== "dim" && fs.existsSync(config.dimBin),
   ]);
+  checks.push([
+    "dima bin",
+    config.dimaBin,
+    config.dimaBin !== "dima" && fs.existsSync(config.dimaBin),
+  ]);
   const dimVersion = spawnSync(config.dimBin, ["version"], {
     encoding: "utf8",
     timeout: 15000,
@@ -1252,6 +1272,23 @@ async function commandDoctor(flags) {
   ]);
 
   checks.push(["database", config.dbPath, fs.existsSync(config.dbPath)]);
+  const leaderOptions = leaderProviderSummary(config);
+  checks.push([
+    "FC choices",
+    `${leaderOptions.choices.length} available (default ${leaderOptions.default.provider} / ${leaderOptions.default.model})`,
+    leaderOptions.choices.length > 0,
+  ]);
+  const masterThreadId = getMeta(db, "master_thread_id");
+  const masterFc = masterThreadId ? getMasterFc(db, masterThreadId) : null;
+  checks.push([
+    "master FC",
+    masterFc
+      ? `${masterFc.provider} / ${masterFc.model} / ${masterFc.effort || "auto"}`
+      : masterThreadId
+        ? "master bound; using config default"
+        : "no master bound",
+    true,
+  ]);
   checks.push(["goal", config.goal, true]);
 
   let ok = true;

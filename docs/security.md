@@ -46,3 +46,12 @@ node src/cli.mjs backup --out foreman-backup.db
 ```
 
 and prune with `foreman compact`.
+
+
+## FC model allowlist
+
+`/api/ask` accepts an optional `leader` override from authenticated clients. In
+shared or exposed installations, restrict the accepted FC providers/models to
+the `leaderChoices` list at the reverse proxy or add a dedicated allowlist; the
+T3 picker is a UI convenience, not an authorization boundary. `forceModel` and
+`forceProvider` currently apply to workers, not to the FC leader.

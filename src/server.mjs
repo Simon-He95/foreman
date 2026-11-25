@@ -7,12 +7,16 @@ import {
   addTask,
   counts,
   dashboardTasks,
+  getMasterFc,
+  getMeta,
   getTask,
   getWorkerByTokenHash,
   importRunningTask,
   recentChat,
   recentEvents,
   revokeWorkerToken,
+  setMasterFc,
+  setMeta,
   setWorkerStatus,
   stateVersion,
   touchWorker,
@@ -175,6 +179,8 @@ function decorateTask(task, config, projectNames = null) {
 
 function buildState({ db, config, daemon, leader }) {
   const names = projectNameMap(db);
+  const masterThreadId = getMeta(db, "master_thread_id");
+  const masterFc = masterThreadId ? getMasterFc(db, masterThreadId) : null;
   return {
     ok: true,
     now: Date.now(),
@@ -187,7 +193,14 @@ function buildState({ db, config, daemon, leader }) {
     ),
     events: recentEvents(db, 40),
     chat: recentChat(db, 60),
-    leader: { mode: config.leaderMode, model: config.leaderModel },
+    leader: {
+      mode: config.leaderMode,
+      provider: config.leaderProvider || null,
+      model: config.leaderModel,
+      effort: config.leaderEffort || null,
+      masterThreadId: masterThreadId || null,
+      masterFc,
+    },
     daemon: daemon ? daemon.snapshot() : null,
     stateCard: buildStateCard(db, config),
     auth: { required: Boolean(config.authToken) },
@@ -289,6 +302,18 @@ export function startServer({ db, config, daemon, leader, logger = console }) {
           return;
         }
         json(res, 200, buildState({ db, config, daemon, leader }), { etag });
+        return;
+      }
+
+      if (req.method === "GET" && pathname === "/api/master/fc") {
+        const threadId = url.searchParams.get("threadId");
+        const masterThreadId = getMeta(db, "master_thread_id");
+        const selectedId = threadId || masterThreadId;
+        json(res, 200, {
+          ok: true,
+          threadId: selectedId || null,
+          fc: selectedId ? getMasterFc(db, selectedId) : null,
+        });
         return;
       }
 
@@ -558,7 +583,10 @@ export function startServer({ db, config, daemon, leader, logger = console }) {
         const body = await readBody(req);
         const message = String(body.message || "").trim().slice(0, 8000);
         if (!message) throw httpError(400, "message is required");
-        const leaderOverride =
+        const masterThreadId = body.masterThreadId
+          ? String(body.masterThreadId).slice(0, 300)
+          : null;
+        let leaderOverride =
           body.leader && typeof body.leader === "object"
             ? {
                 provider: body.leader.provider
@@ -572,11 +600,26 @@ export function startServer({ db, config, daemon, leader, logger = console }) {
                   : undefined,
               }
             : null;
+        if (masterThreadId) {
+          if (!getMeta(db, "master_thread_id")) {
+            setMeta(db, "master_thread_id", masterThreadId);
+          }
+          if (leaderOverride) {
+            setMasterFc(db, masterThreadId, leaderOverride);
+            const primary = getMeta(db, "master_thread_id");
+            if (!primary || !getMasterFc(db, primary)) {
+              setMeta(db, "master_thread_id", masterThreadId);
+            }
+          } else {
+            leaderOverride = getMasterFc(db, masterThreadId);
+          }
+        }
         const result = await leader.turn({
           message,
           trigger: "user",
           deferAddTasks: body.delegateTasks === true,
           leader: leaderOverride,
+          masterThreadId,
         });
         json(res, 200, { ok: true, ...result });
         return;

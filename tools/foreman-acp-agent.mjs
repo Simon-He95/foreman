@@ -304,6 +304,33 @@ async function callT3Tool(name, args) {
   }
 }
 
+async function controlGet(pathname) {
+  const headers = {};
+  if (token) headers.authorization = `Bearer ${token}`;
+  const response = await fetch(`${controlUrl}${pathname}`, { headers });
+  const text = await response.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { error: text };
+  }
+  if (!response.ok) throw new Error(data.error || `Foreman returned ${response.status}`);
+  return data;
+}
+
+async function storedLeader() {
+  if (!t3ThreadId) return null;
+  try {
+    const data = await controlGet(
+      `/api/master/fc?threadId=${encodeURIComponent(t3ThreadId)}`,
+    );
+    return data?.fc || null;
+  } catch {
+    return null;
+  }
+}
+
 async function controlPost(pathname, body) {
   const headers = { "content-type": "application/json" };
   if (token) headers.authorization = `Bearer ${token}`;
@@ -471,7 +498,12 @@ async function askForeman(message, { delegateTasks = false, leader = null } = {}
     const response = await fetch(`${controlUrl}/api/ask`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ message, delegateTasks, leader }),
+      body: JSON.stringify({
+        message,
+        delegateTasks,
+        leader,
+        masterThreadId: t3ThreadId || null,
+      }),
       signal: controller.signal,
     });
     const text = await response.text();
@@ -486,6 +518,9 @@ async function askForeman(message, { delegateTasks = false, leader = null } = {}
     }
     const applied = Array.isArray(data.applied) ? data.applied : [];
     let out = String(data.reply || "").trim();
+    if (data.fallback) {
+      out = `⚠️ FC 调用失败，已回退到规则汇报。\n\n${out}`;
+    }
     const completedActions = applied.filter((entry) => !entry?.pending);
     if (completedActions.length) {
       out += `\n\n动作：${JSON.stringify(completedActions)}`;
@@ -528,10 +563,13 @@ async function handle(message) {
 
   if (method === "session/new") {
     const sessionId = `sess_${crypto.randomUUID()}`;
+    const stored = await storedLeader();
     const session = {
       cwd: params?.cwd || ROOT,
       createdAt: Date.now(),
-      leader: { ...initialLeader },
+      leader: stored
+        ? normalizeLeaderOverride(stored, config)
+        : { ...initialLeader },
     };
     sessions.set(sessionId, session);
     const selected =
@@ -547,10 +585,13 @@ async function handle(message) {
 
   if (method === "session/load") {
     const sessionId = params?.sessionId || `sess_${crypto.randomUUID()}`;
+    const stored = await storedLeader();
     const session = {
       cwd: params?.cwd || ROOT,
       createdAt: Date.now(),
-      leader: { ...initialLeader },
+      leader: stored
+        ? normalizeLeaderOverride(stored, config)
+        : { ...initialLeader },
     };
     sessions.set(sessionId, session);
     const selected = params?._meta?.selectedModel || null;
@@ -562,10 +603,13 @@ async function handle(message) {
 
   if (method === "session/resume") {
     const sessionId = params?.sessionId || `sess_${crypto.randomUUID()}`;
+    const stored = await storedLeader();
     const session = {
       cwd: params?.cwd || ROOT,
       createdAt: Date.now(),
-      leader: { ...initialLeader },
+      leader: stored
+        ? normalizeLeaderOverride(stored, config)
+        : { ...initialLeader },
     };
     sessions.set(sessionId, session);
     const selected = params?._meta?.selectedModel || null;

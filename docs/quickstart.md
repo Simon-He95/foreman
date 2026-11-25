@@ -161,6 +161,7 @@ Then in T3:
 1. Create a new thread.
 2. Choose provider **Foreman (control plane)**, then choose the FC provider/model
    (for example `dim::gpt-6.2-astra` or `dima::deepseek-v4.1-flash`) and effort.
+   The choice is saved with the thread and reused when it resumes.
 3. Ask for work in natural language.
 4. Foreman creates child T3 threads for tasks and reports completions.
 

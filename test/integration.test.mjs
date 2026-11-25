@@ -25,12 +25,14 @@ import {
   counts,
   dashboardTasks,
   getProject,
+  getMasterFc,
   getTask,
   importRunningTask,
   openDb,
   queuedTasks,
   recentChat,
   recentEvents,
+  setMasterFc,
   setMeta,
   setWorkerStatus,
   setWorkerToken,
@@ -278,6 +280,65 @@ test("FC leader choices expose provider models and per-provider effort", () => {
     assert.equal(override.mode, "dima");
     assert.equal(override.provider, "dima");
   } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("master FC selection persists and per-master turns do not block each other", async () => {
+  const dir = tempDir();
+  const config = testConfig(dir, { leaderMode: "rule" });
+  const db = openDb(config.dbPath);
+  try {
+    setMasterFc(db, "mcp:master-a", {
+      provider: "dima",
+      model: "deepseek-v4.1-flash",
+      effort: "high",
+    });
+    assert.deepEqual(
+      {
+        provider: getMasterFc(db, "mcp:master-a").provider,
+        model: getMasterFc(db, "mcp:master-a").model,
+        effort: getMasterFc(db, "mcp:master-a").effort,
+      },
+      { provider: "dima", model: "deepseek-v4.1-flash", effort: "high" },
+    );
+
+    const leader = new Leader({ db, config, logger: quiet });
+    let active = 0;
+    let maxActive = 0;
+    leader.runTurn = async ({ masterThreadId, message }) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await sleep(80);
+      active -= 1;
+      return {
+        reply: `${masterThreadId}:${message}`,
+        actions: [],
+        applied: [],
+        fallback: false,
+      };
+    };
+    await Promise.all([
+      leader.turn({ masterThreadId: "mcp:a", message: "a" }),
+      leader.turn({ masterThreadId: "mcp:b", message: "b" }),
+    ]);
+    assert.ok(maxActive >= 2);
+    let sameKeyActive = 0;
+    let sameKeyMax = 0;
+    leader.runTurn = async () => {
+      sameKeyActive += 1;
+      sameKeyMax = Math.max(sameKeyMax, sameKeyActive);
+      await sleep(30);
+      sameKeyActive -= 1;
+      return { reply: "ok", actions: [], applied: [], fallback: false };
+    };
+    await Promise.all([
+      leader.turn({ masterThreadId: "mcp:same", message: "a" }),
+      leader.turn({ masterThreadId: "mcp:same", message: "b" }),
+    ]);
+    assert.equal(sameKeyMax, 1);
+  } finally {
+    db.close();
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -1245,6 +1306,20 @@ test("HTTP API requires a token and enforces project roots", async () => {
     assert.equal(projects.status, 200);
     const projectBody = await projects.json();
     assert.ok(projectBody.projects.some((project) => project.name === "default"));
+
+    setMasterFc(db, "mcp:http-test", {
+      provider: "dima",
+      model: "deepseek-v4.1-flash",
+      effort: "high",
+    });
+    setMeta(db, "master_thread_id", "mcp:http-test");
+    const fc = await fetch(`${base}/api/master/fc?threadId=mcp:http-test`, {
+      headers: auth,
+    });
+    assert.equal(fc.status, 200);
+    const fcBody = await fc.json();
+    assert.equal(fcBody.fc.provider, "dima");
+    assert.equal(fcBody.fc.effort, "high");
 
     const byName = await fetch(`${base}/api/tasks`, {
       method: "POST",

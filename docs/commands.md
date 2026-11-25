@@ -98,6 +98,7 @@ discovered from enabled T3 providers (plus `leaderChoices`). Upstream T3 worker
 model additions or removals require updating `modelFast`, `modelStrong`, and
 `modelCoding`, then restarting `foreman up`. FC choices refresh when T3
 refreshes its provider cache; restart T3 after adding/removing a provider.
+The selected FC is persisted per T3 master thread.
 
 ## Release (maintainers)
 

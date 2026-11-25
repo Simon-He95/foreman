@@ -286,7 +286,9 @@ When you create a **Foreman (control plane)** thread in T3, its model picker
 lists configured FC provider/model choices and its effort picker sets the
 leader effort for that thread. `leaderChoices` can add explicit provider/model
 choices; otherwise Foreman discovers models from the enabled T3 provider
-caches. Check the effective values and choices with `foreman models`. See
+caches. The choice is persisted per T3 thread and reused on resume; turns are
+queued per master so one slow FC does not block another. Check the effective
+values and choices with `foreman models` and `foreman master show`. See
 [Models and effort](docs/models-and-effort.md). Restart T3 after adding a
 provider/model so its cache refreshes.
 

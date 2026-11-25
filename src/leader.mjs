@@ -7,6 +7,8 @@ import {
   addTask,
   appendEvent,
   consumeInbox,
+  getMasterFc,
+  getMeta,
   getTask,
   newId,
   recentChat,
@@ -129,7 +131,7 @@ export class Leader {
     this.config = config;
     this.daemon = daemon;
     this.logger = logger;
-    this.turnChain = Promise.resolve();
+    this.turnChains = new Map();
   }
 
   stateCard() {
@@ -632,11 +634,19 @@ export class Leader {
   }
 
   turn(options = {}) {
-    const run = this.turnChain.then(() => this.runTurn(options));
-    this.turnChain = run.then(
+    const key = String(options.masterThreadId || "default");
+    const previous = this.turnChains.get(key) || Promise.resolve();
+    const run = previous.then(() => this.runTurn(options));
+    const settled = run.then(
       () => undefined,
       () => undefined,
     );
+    this.turnChains.set(key, settled);
+    settled.finally(() => {
+      if (this.turnChains.get(key) === settled) {
+        this.turnChains.delete(key);
+      }
+    });
     return run;
   }
 
@@ -646,6 +656,7 @@ export class Leader {
     recordUser = true,
     deferAddTasks = false,
     leader = null,
+    masterThreadId = null,
   } = {}) {
     if (message && recordUser) addChat(this.db, "user", message);
     const smallTalk = trigger === "user" ? smallTalkReply(message) : null;
@@ -719,6 +730,14 @@ export class Leader {
       applied,
       fallback,
       trigger,
+      masterThreadId,
+      leader: selected
+        ? {
+            provider: selected.provider,
+            model: selected.model,
+            effort: selected.effort,
+          }
+        : null,
     };
   }
 }
@@ -763,10 +782,16 @@ export class LeaderLoop {
         return `- ${item.kind} [${item.task_id || "-"}] ${oneLine(payload, 200)}`;
       });
       const message = `[自动唤醒] ${items.length} 个任务状态变化：\n${lines.join("\n")}`;
+      const masterThreadId = getMeta(this.db, "master_thread_id");
+      const selectedFc = masterThreadId
+        ? getMasterFc(this.db, masterThreadId)
+        : null;
       const result = await this.leader.turn({
         message,
         trigger: "completion_batch",
         recordUser: false,
+        leader: selectedFc,
+        masterThreadId,
       });
       consumeInbox(
         this.db,

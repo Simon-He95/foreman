@@ -93,6 +93,13 @@ leader providers/models/efforts.
 - Explicit `leaderChoices` are merged with choices discovered from enabled T3
   provider caches. This is useful when a provider's cache only advertises a
   default model (for example an alpha provider).
+- The selection is persisted per T3 master thread (`meta.master_fc:<threadId>`).
+  Resuming/restarting the T3 thread reuses it. Automatic leader wakeups use the
+  primary master's stored FC; use `foreman master set` to change the primary.
+- Turns are queued per master thread (`masterThreadId`), so a slow FC provider
+  in one master does not block another master.
+- If the selected provider fails, the reply is prefixed with an explicit
+  fallback warning and the task keeps the error in its chat/status.
 - After adding/removing a T3 provider or model, restart T3 so its provider cache
   refreshes; then restart Foreman if `leaderChoices`/`leaderProvider` changed.
 

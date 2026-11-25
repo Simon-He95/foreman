@@ -105,8 +105,13 @@ node src/cli.mjs master test
 
 `master create` uses `t3Project`, provider `foreman`, the default FC model
 choice, and binds the new thread automatically. In T3, the Foreman provider's
-model picker and effort picker set the leader for that master thread. T3 must be
-restarted after changing the provider/model catalog or registration.
+model picker and effort picker set the leader for that master thread.
+
+The selection is stored in `meta.master_fc:<t3-thread-id>` and is reused when
+the T3 thread resumes. Automatic leader wakeups use the primary
+`master_thread_id` and its stored FC; use `foreman master set <thread-id>` to
+switch the primary. T3 must be restarted after changing the provider/model
+catalog or registration.
 
 ## Task-level flags
 
