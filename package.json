@@ -1,6 +1,6 @@
 {
   "name": "foreman-ops",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Always-on control plane for coding-agent fleets on T3 Code: durable task ledger, leases, retries, and accurate status.",
   "type": "module",
   "license": "MIT",
@@ -60,7 +60,8 @@
     "smoke:t3": "node scripts/t3-smoke.mjs",
     "t3:register-foreman": "node scripts/setup-t3-foreman.mjs",
     "release": "node scripts/release.mjs",
-    "release:dry": "node scripts/release.mjs --dry-run"
+    "release:dry": "node scripts/release.mjs --dry-run",
+    "t3:register-dima": "node scripts/setup-t3-dima.mjs"
   },
   "dependencies": {
     "t3": "^0.1.11"

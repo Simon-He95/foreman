@@ -4,6 +4,23 @@ All notable changes to Foreman are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-11-25
+
+### Added
+
+- Rust DimAgent alpha (`dima`) integration through `dima acp`.
+- `npm run t3:register-dima` writes the **DimAgent Rust (dima)** T3 provider.
+- `docs/dima.md` covers TUI vs ACP, model catalog refresh, permissions, and
+  switching Foreman from `dim` to `dima`.
+
+### Notes
+
+- The TUI (`dima`) and ACP gateway (`dima acp`) use the same harness; T3 launches
+  the ACP gateway.
+- Dima's model catalog and authentication are separate from the old `dim` CLI.
+  Refresh models and set explicit `modelFast` / `modelStrong` / `modelCoding`
+  before switching Foreman to `dima`.
+
 ## [1.0.0] - 2026-11-25
 
 ### Added

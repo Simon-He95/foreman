@@ -216,7 +216,9 @@ foreman master test
 
 Native lineage requires the master and the task to share the same T3 project.
 A master in a different project, or a non-Foreman thread, falls back to a
-top-level worker thread. See [Native lineage](docs/native-lineage.md).
+top-level worker thread. See [Native lineage](docs/native-lineage.md). The Rust
+DimAgent alpha can be registered as the `dima` provider; see
+[DimAgent Rust](docs/dima.md).
 
 ## Daily operation
 

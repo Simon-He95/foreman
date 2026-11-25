@@ -280,7 +280,7 @@ async function commandInit(flags) {
       mode === "t3"
         ? String(
             flags.provider ||
-              (await ask("T3 provider (dim/codex/claude)", "dim")),
+              (await ask("T3 provider (dim/dima/codex/claude)", "dim")),
           )
         : null;
     const model =

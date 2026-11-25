@@ -109,8 +109,8 @@ foreman init --yes \
   --register
 ```
 
-The model above is a DimAgent example; replace provider/model for Codex or
-Claude. If you omit `--yes`, the wizard asks the same questions and offers to
+The model above is a DimAgent example; replace provider/model for the Rust
+`dima`, Codex, or Claude. If you omit `--yes`, the wizard asks the same questions and offers to
 register the provider.
 
 From a source checkout, `npm run t3:register-foreman` is equivalent to the

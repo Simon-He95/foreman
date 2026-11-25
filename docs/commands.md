@@ -70,6 +70,16 @@ Flags override environment variables and `foreman.config.json`. The main set:
 Worker flags are documented in [Workers](workers.md); every config key and
 environment variable is in [Configuration](configuration.md).
 
+## T3 provider registration
+
+```bash
+npm run t3:register-foreman  # Foreman control-plane provider
+npm run t3:register-dim      # old TypeScript DimAgent (optional)
+npm run t3:register-dima     # Rust DimAgent alpha (optional)
+```
+
+Restart T3 after any provider registration.
+
 ## Model catalog
 
 ```bash

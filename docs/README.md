@@ -21,6 +21,7 @@ worker model.
 - [Configuration](configuration.md) — every config key and environment variable
 - [Native lineage](native-lineage.md) — parent/child T3 threads
 - [Models and effort](models-and-effort.md) — automatic tiers and explicit overrides
+- [DimAgent Rust (`dima`)](dima.md) — Rust TUI / ACP harness
 - [Workers](workers.md) — local and remote execution
 - [Security](security.md) — tokens, loopback, remote access
 - [Troubleshooting](troubleshooting.md) — common provider/task failures
