@@ -49,17 +49,33 @@ export function modelCatalog(config) {
 }
 
 export function classifyTask({ title = "", brief = "" } = {}) {
+  const titleText = String(title);
   const text = `${title}\n${brief}`;
-  const coding =
-    /(实现|修复|重构|迁移|代码|测试|bug|feature|接口|函数|页面|组件|脚本|数据库|性能|部署|api|cli|typescript|javascript|python|rust|go)/i.test(
+
+  // "Implement/fix/refactor" is a code change. Do not let an API URL or the
+  // word "代码" in a research brief turn a read-only lookup into a coding task.
+  const editIntent =
+    /(实现|修复|重构|迁移|开发|编写|写(个|一个|代码|脚本|测试)|修改|改(一下|成|为)?|新增|添加|删除|移除|补(一下|个|充)?|优化|调试|部署|升级|接入|拆分|合并|fix|implement|refactor|migrate|develop|write|edit|modify|add|remove|delete|optimi[sz]e|debug|deploy|upgrade)/i.test(
+      titleText,
+    );
+  const codingSurface =
+    /(代码|函数|接口|页面|组件|脚本|数据库|测试|bug|feature|api|cli|typescript|javascript|python|rust|go)/i.test(
       text,
     );
-  const deep =
-    coding ||
-    /(调研|研究|分析|设计|架构|审计|安全|并发|根因|对比|评估|方案|复杂|深度|跨模块|全面|多步)/.test(
-      text,
+  const deepIntent =
+    /(调研|研究|调查|盘点|收集|汇总|分析|对比|评估|审计|审查|架构|根因|方案|复杂|深度|跨模块|全面|多步|review|research|investigate|survey|collect|compare|audit|analy[sz]e)/i.test(
+      titleText,
     );
-  if (deep) return coding ? "coding" : "deep";
+  const simpleResearch =
+    /(查询|查看|看看|查一下|查下|^查|列出|下载量|下载趋势|反向依赖|依赖数|最新版本|发布时间|数据来源|天气|气温|价格|汇率|新闻|统计)/i.test(
+      titleText,
+    );
+
+  if (editIntent) return "coding";
+  if (deepIntent) return "deep";
+  // A simple lookup with an API URL is still research, not a coding task.
+  if (simpleResearch) return "standard";
+  if (codingSurface) return "coding";
   if (
     text.length < 1500 &&
     /(重命名|格式化|typo|文案|注释|文档|readme|小改|简单|单文件|措辞|翻译)/i.test(

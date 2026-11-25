@@ -125,6 +125,16 @@ test("model policy chooses by difficulty and honors explicit overrides", () => {
   assert.equal(deep.model, "dim/strong");
   assert.equal(deep.effort, "max");
 
+  const simpleResearch = planTaskModel(config, {
+    title: "查 markstream-vue 的 npm 下载量与反向依赖数",
+    brief:
+      "用 npm registry / api.npmjs.org 查下载量，并用 GitHub 代码搜索找反向依赖，输出报告。",
+    adapter: "t3",
+  });
+  assert.equal(simpleResearch.tier, "standard");
+  assert.equal(simpleResearch.model, "dim/fast");
+  assert.equal(simpleResearch.effort, "auto");
+
   const coding = planTaskModel(config, {
     title: "修复登录页的并发 bug",
     brief: "重构相关组件并补测试",

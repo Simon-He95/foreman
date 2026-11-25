@@ -158,6 +158,7 @@ export class Leader {
       modelPolicyText(this.config),
       "难度分级：light=简单文案/格式/单文件；standard=一般实现；deep=调研/分析/架构/审计；coding=修复/重构/迁移/复杂代码。",
       "默认：light=fast+none，standard=fast+auto，deep=strong+max，coding=coding+max。",
+      "简单查资料/下载量/天气/价格/最新版本属于 standard（fast）；只有调研、分析、审计、架构、复杂方案才用 deep（strong）；只有真正写/改/修代码才用 coding（Opus）。不要因为 brief 里出现 API URL、代码搜索或“测试”字样就把只读调查判成 coding。",
       "用户明确说“用强模型/最强/思考开到最大/effort max”时，必须在 add_task 里设置 model=strong或coding、effort=max；用户说“要快/便宜”时用 fast+none。",
       "",
       "【回答方式】",
