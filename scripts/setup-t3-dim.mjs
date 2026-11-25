@@ -71,7 +71,7 @@ console.log("  export FOREMAN_DIM_PERMISSION=full-access   # or workspace-write"
 console.log("  t3 serve --no-browser --port 3773");
 console.log("");
 console.log("then, in this repo:");
-console.log("  node src/cli.mjs init --adapter t3 --provider dim --leader dim");
-console.log("  node src/cli.mjs up");
+console.log("  foreman init --adapter t3 --provider dim --leader dim");
+console.log("  foreman up");
 console.log("  # worker: dim / dimcode-api-oauth/deepseek-v4.1-flash");
 console.log("  # leader: dim");

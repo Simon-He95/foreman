@@ -5,6 +5,7 @@
 [English](README.md) · [简体中文](README.zh-CN.md)
 
 [![CI](https://github.com/Simon-He95/foreman/actions/workflows/ci.yml/badge.svg)](https://github.com/Simon-He95/foreman/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/foreman-ops.svg)](https://www.npmjs.com/package/foreman-ops)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.5-339933.svg)](package.json)
 [![Status: alpha](https://img.shields.io/badge/status-alpha-orange.svg)](#status)
@@ -58,7 +59,7 @@ truth.
 
 | Goal | Needs | First-run time | Start |
 | --- | --- | --- | --- |
-| See the ledger and dashboard | Node.js >= 22.5 | ~2 min | `npm install && npm run demo -- --duration 20` |
+| See the ledger and dashboard | Node.js >= 22.5 | ~2 min | `npm install -g foreman-ops` then `foreman demo --duration 20` |
 | Run a mock control plane | Node.js >= 22.5 | ~3 min | `foreman init --yes --adapter mock` then `foreman up` |
 | Run real coding agents | Node.js + T3 Code + an authenticated ACP provider | 10–20 min | [T3 setup](#use-with-t3-code) |
 | Chat with Foreman inside T3 | the real path + a registered provider | +5 min | `foreman master create` |
@@ -66,8 +67,14 @@ truth.
 Foreman does **not** bundle T3 Code and does **not** include a model provider.
 T3 is the execution layer and worker UI; a provider such as DimAgent, Codex, or
 Claude supplies the model and tools. There is no one-click desktop installer
-yet, and the npm package `foreman-ops` is still in its first-release review:
-source checkout is the supported install path today.
+yet. The CLI is published as **`foreman-ops`** on npm:
+
+```bash
+npm install -g foreman-ops
+```
+
+Source checkout remains available for contributors and the latest unreleased
+changes.
 
 | Dependency | Required for | Notes |
 | --- | --- | --- |
@@ -87,26 +94,32 @@ not edit your code or run a model.
 Requirements: Node.js **>= 22.5**. T3 Code is only needed for real worker
 threads; the demo and mock control plane use a local adapter.
 
-### 1. Install from source
+### 1. Install the CLI
+
+From npm:
+
+```bash
+npm install -g foreman-ops
+foreman --help
+```
+
+Contributors can run the current `main` from source:
 
 ```bash
 git clone https://github.com/Simon-He95/foreman.git
 cd foreman
 npm install
 npm test
-```
-
-Use it as a local CLI:
-
-```bash
 npm install -g .
 ```
 
 ### 2. Try the mock demo (no model needed)
 
 ```bash
-npm run demo -- --duration 20
+foreman demo --duration 20
 ```
+
+From a source checkout, `npm run demo -- --duration 20` is equivalent.
 
 This starts a control plane, dispatches mock tasks, wakes the leader on
 completion, and prints the briefing. The demo is intentionally isolated from
@@ -171,10 +184,14 @@ npx t3@latest --version
 npx t3@latest serve --no-browser --port 3773
 npx t3@latest project add /path/to/your/repo
 
-# 2. Authenticate your ACP provider in T3, then register Foreman
-#    DimAgent is optional; use the provider you already have.
-npm run t3:register-foreman
-npm run t3:register-dim   # only if you use DimAgent
+# 2. Authenticate your ACP provider in T3, then configure + register Foreman
+foreman init --adapter t3 --provider dim \
+  --project /path/to/your/repo \
+  --model dimcode-api-oauth/deepseek-v4.1-flash \
+  --leader dim --register
+
+# From a source checkout, npm run t3:register-foreman does the registration.
+# For the DimAgent worker, the source-only helper is: npm run t3:register-dim
 
 # 3. Restart T3 so the new provider appears, then start Foreman
 foreman up --adapter t3 --leader dim

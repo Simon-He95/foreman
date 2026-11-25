@@ -5,6 +5,7 @@
 [English](README.md) · [简体中文](README.zh-CN.md)
 
 [![CI](https://github.com/Simon-He95/foreman/actions/workflows/ci.yml/badge.svg)](https://github.com/Simon-He95/foreman/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/foreman-ops.svg)](https://www.npmjs.com/package/foreman-ops)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.5-339933.svg)](package.json)
 
@@ -47,14 +48,18 @@ T3 可以单独使用；Foreman 也可以在 `mock` 模式下完全不依赖 T3 
 
 | 目标 | 前置条件 | 首次耗时 | 开始 |
 | --- | --- | --- | --- |
-| 看账本和面板 | Node.js >= 22.5 | 约 2 分钟 | `npm install && npm run demo -- --duration 20` |
+| 看账本和面板 | Node.js >= 22.5 | 约 2 分钟 | `npm install -g foreman-ops` 后 `foreman demo --duration 20` |
 | 常驻 mock 控制面 | Node.js >= 22.5 | 约 3 分钟 | `foreman init --yes --adapter mock` 后 `foreman up` |
 | 跑真实编码 Agent | Node + T3 Code + 已认证的 ACP provider | 10–20 分钟 | [T3 配置](#在-t3-里使用) |
 | 在 T3 里和 Foreman 对话 | 真实路径 + 已注册 provider | 再加 5 分钟 | `foreman master create` |
 
 Foreman **不包含 T3 Code，也不包含模型 provider**。T3 是执行层和 worker UI；
 DimAgent、Codex、Claude 等 ACP provider 提供模型和工具。目前没有一键桌面安装包，
-npm 包也还没有发布，**从源码安装是当前唯一支持的路径**。
+但 CLI 已经发布到 npm：
+
+```bash
+npm install -g foreman-ops
+```
 
 | 依赖 | 用途 | 说明 |
 | --- | --- | --- |
@@ -72,20 +77,24 @@ npm 包也还没有发布，**从源码安装是当前唯一支持的路径**。
 
 要求 Node.js **>= 22.5**。真实 worker 需要 T3 和已认证的 ACP provider；demo 和 mock 模式不需要。
 
+从 npm 安装：
+
+```bash
+npm install -g foreman-ops
+foreman --help
+```
+
+需要最新 main 或参与开发时，从源码安装：
+
 ```bash
 git clone https://github.com/Simon-He95/foreman.git
 cd foreman
 npm install
 npm test
+npm install -g .
 
 # 不需要模型的完整演示
 npm run demo -- --duration 20
-```
-
-安装为本地命令：
-
-```bash
-npm install -g .
 ```
 
 ### 初始化
@@ -135,10 +144,14 @@ npx t3@latest --version
 npx t3@latest serve --no-browser --port 3773
 npx t3@latest project add /path/to/your/repo
 
-# 2. 在 T3 里登录 provider，然后注册 Foreman
-#    DimAgent 是可选的；用你已有的 provider 即可
-npm run t3:register-foreman
-npm run t3:register-dim   # 只有使用 DimAgent 时才需要
+# 2. 在 T3 里登录 provider，然后配置并注册 Foreman
+foreman init --adapter t3 --provider dim \
+  --project /path/to/your/repo \
+  --model dimcode-api-oauth/deepseek-v4.1-flash \
+  --leader dim --register
+
+# 从源码运行时，npm run t3:register-foreman 等价于注册这一步
+# 只有使用 DimAgent worker 时才需要：npm run t3:register-dim
 
 # 3. 重启 T3，再启动 Foreman
 foreman up --adapter t3 --leader dim

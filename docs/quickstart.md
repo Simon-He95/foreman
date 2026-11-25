@@ -23,30 +23,31 @@ matches what you want.
 | Port `3773` | T3 Code | change it if occupied |
 | Port `3777` | Foreman dashboard | change it if occupied |
 
-There is currently **no one-click desktop installer** and the npm package is
-not published yet (`foreman-ops` is in first-release review). Install from a
-source checkout:
+There is currently **no one-click desktop installer**, but the CLI is published
+on npm as `foreman-ops`:
+
+```bash
+npm install -g foreman-ops
+foreman --help
+```
+
+For contributors or unreleased changes, use a source checkout:
 
 ```bash
 git clone https://github.com/Simon-He95/foreman.git
 cd foreman
 npm install
 npm test
-```
-
-To use the short `foreman` command instead of `node src/cli.mjs`, install it
-locally:
-
-```bash
 npm install -g .
 ```
 
 ## A. See it in 2 minutes (no T3, no model)
 
 ```bash
-cd foreman
-npm run demo -- --duration 20
+foreman demo --duration 20
 ```
+
+From a source checkout, use `npm run demo -- --duration 20` instead.
 
 The demo runs a mock fleet, claims tasks, wakes the leader on completion, and
 prints the briefing. This proves the queue, leases, retries, inbox, and state
@@ -69,7 +70,8 @@ Open `http://127.0.0.1:3777`, click **+ 新任务**, and use the dashboard. This
 useful for evaluating the UI/API and for developing against the ledger. Mock
 tasks are simulated and do not run a real coding agent.
 
-Without `npm install -g .`, substitute `node src/cli.mjs` for `foreman`.
+If you installed from a source checkout without a global CLI, substitute
+`node src/cli.mjs` for `foreman`.
 
 ## C. Real agents with T3 Code
 
@@ -93,39 +95,9 @@ npx t3@latest project add /path/to/your/repo
 Keep T3 running. In T3, confirm the project exists and your provider is
 authenticated before involving Foreman.
 
-### C2. Register the Foreman provider
+### C2. Configure and register Foreman
 
-From the Foreman source checkout:
-
-```bash
-npm run t3:register-foreman
-```
-
-If you use DimAgent as the worker, also register its ACP wrapper:
-
-```bash
-npm run t3:register-dim
-```
-
-**Restart T3 after registration.** A new provider is not visible in an already
-running T3 process. The new T3 thread will show **Foreman (control plane)**.
-
-### C3. Configure Foreman
-
-```bash
-foreman init
-```
-
-Choose:
-
-- adapter: `t3`
-- project: the same project you added to T3
-- provider: `dim`, `codex`, or `claudeAgent`
-- worker model: a model valid for that provider
-- leader: `dim`, `codex`, `claude`, or `rule`
-
-Or use flags (the model below is a DimAgent example; replace it for another
-provider):
+The npm CLI can write the config and register its T3 provider in one step:
 
 ```bash
 foreman init --yes \
@@ -137,10 +109,19 @@ foreman init --yes \
   --register
 ```
 
-`--register` runs the Foreman provider setup. You still need to restart T3 if it
-was already running.
+The model above is a DimAgent example; replace provider/model for Codex or
+Claude. If you omit `--yes`, the wizard asks the same questions and offers to
+register the provider.
 
-### C4. Start Foreman
+From a source checkout, `npm run t3:register-foreman` is equivalent to the
+registration part. If you use DimAgent as the worker, also run
+`npm run t3:register-dim` from a source checkout, or add its ACP wrapper through
+T3's provider settings.
+
+**Restart T3 after registration.** A new provider is not visible in an already
+running T3 process. The new T3 thread will show **Foreman (control plane)**.
+
+### C3. Start Foreman
 
 ```bash
 foreman doctor
@@ -149,7 +130,7 @@ foreman up
 
 The dashboard is at `http://127.0.0.1:3777`. T3 stays on `:3773`.
 
-### C5. Use it
+### C4. Use it
 
 From the dashboard or CLI:
 

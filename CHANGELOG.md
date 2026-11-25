@@ -4,6 +4,18 @@ All notable changes to Foreman are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [0.1.1] - 2026-11-25
+
+### Changed
+
+- Publish the CLI as `foreman-ops` on npm.
+- Lead the README/Quickstart with the npm install path and spell out the
+  Node/T3/provider dependency matrix.
+- Replace the dashboard's dark gradient/pill/left-border theme with the light
+  editorial ledger UI.
+- Refresh dashboard and social-preview screenshots.
+- Make setup helper output use the installed `foreman` command.
+
 ## [0.1.0] - 2026-11-25
 
 ### Added

@@ -66,7 +66,7 @@ console.log("restart the T3 server, then run:");
 console.log(
   "  FOREMAN_ADAPTER=t3 FOREMAN_T3_PROVIDER=foremanMock FOREMAN_T3_MODEL=default \\",
 );
-console.log("  node src/cli.mjs up --no-worktree");
+console.log("  foreman up --no-worktree");
 console.log("");
 console.log(
   "or use a real provider (codex, claudeAgent, or any ACP registry agent) in FOREMAN_T3_PROVIDER/MODEL.",

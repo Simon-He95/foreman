@@ -61,7 +61,7 @@ fs.chmodSync(settingsPath, 0o600);
 console.log(`registered provider "foreman" in ${settingsPath}`);
 console.log(`executable: ${agentPath}`);
 console.log("");
-console.log("1. Keep Foreman running: node src/cli.mjs up --adapter t3 --leader dim");
+console.log("1. Keep Foreman running: foreman up --adapter t3 --leader dim");
 console.log("2. Restart the T3 server so it reloads provider instances.");
 console.log("3. In T3, create a thread and choose provider: Foreman (control plane).");
 console.log("4. Talk to it there; prompts go to Foreman POST /api/ask.");
