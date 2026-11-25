@@ -14,7 +14,10 @@ import {
   mergeModelRoutes,
   planTaskModel,
 } from "./model-policy.mjs";
-import { resolveModelTarget } from "./model-catalog.mjs";
+import {
+  resolveTargetPlan,
+  targetPlanFromResolution,
+} from "./model-catalog.mjs";
 import { notifyMaster } from "./notifier.mjs";
 import { formatDuration } from "./state.mjs";
 
@@ -60,17 +63,20 @@ export class Daemon {
 
   resolveTaskTarget(task) {
     if (task.adapter !== "t3") {
-      return {
-        provider: task.provider || null,
-        model: task.model || null,
-        effort: task.effort || null,
-        validation: { ok: true, errors: [], warnings: [], suggestions: [] },
-      };
+      return targetPlanFromResolution(
+        {
+          provider: task.provider || null,
+          model: task.model || null,
+          effort: task.effort || null,
+          validation: { ok: true, errors: [], warnings: [], suggestions: [] },
+        },
+        { source: task.target_source || "tier" },
+      );
     }
     const masterFc = task.master_thread_id
       ? getMasterFc(this.db, task.master_thread_id)
       : null;
-    return resolveModelTarget(
+    return resolveTargetPlan(
       this.config,
       {
         provider:
@@ -81,6 +87,7 @@ export class Daemon {
         effort: task.effort,
       },
       {
+        source: task.target_source || "claim",
         preferredProviders: [
           task.provider,
           this.config.forceProvider,
@@ -293,6 +300,7 @@ export class Daemon {
         provider: target.provider || task.provider,
         model: target.model || task.model,
         effort: task.effort,
+        target,
         attempts: task.attempts + 1,
         started_at: ts,
         heartbeat_at: ts,
@@ -342,8 +350,18 @@ export class Daemon {
       } catch (error) {
         appendEvent(this.db, task.id, "start_error", {
           error: error.message,
+          code: error.code || "start",
+          retryable: error.retryable !== false,
         });
         this.logError(task.id, "start", error);
+        if (error.retryable === false) {
+          const errorClass = error.code || "start";
+          await this.finalize(updated, {
+            state: "blocked",
+            error: `${errorClass}: ${error.message}`,
+          });
+          continue;
+        }
         await this.requeueOrFail(updated, `start failed: ${error.message}`);
       }
     }
@@ -587,6 +605,7 @@ export class Daemon {
       throw error;
     }
     let retryTarget = {};
+    let target = null;
     if (task.adapter === "t3") {
       const masterFc = task.master_thread_id
         ? getMasterFc(this.db, task.master_thread_id)
@@ -601,7 +620,6 @@ export class Daemon {
       // does not leave a permanently poisoned retry button. A task that did
       // start keeps its original target unless the target is itself now
       // invalid; in that case retrying would only reproduce the failure.
-      let target = null;
       if (["failed", "lost"].includes(task.status) && !task.thread_id) {
         const plan = planTaskModel(this.config, {
           title: task.title,
@@ -613,18 +631,19 @@ export class Daemon {
           routes,
           masterFc,
         });
-        target = resolveModelTarget(
+        target = resolveTargetPlan(
           this.config,
           {
             provider:
               plan.provider ||
               this.config.forceProvider ||
               task.provider ||
-              this.config.t3Provider,
+              null,
             model: plan.model,
             effort: plan.effort,
           },
           {
+            source: plan.source || "retry",
             preferredProviders: [
               plan.provider,
               this.config.forceProvider,
@@ -640,16 +659,18 @@ export class Daemon {
             : null,
           model: target.model || plan.model,
           effort: plan.effort,
+          target,
         };
       } else {
-        target = resolveModelTarget(
+        target = resolveTargetPlan(
           this.config,
           {
-            provider: task.provider || this.config.t3Provider,
+            provider: task.provider || this.config.forceProvider || null,
             model: task.model,
             effort: task.effort,
           },
           {
+            source: task.target_source || "retry",
             preferredProviders: [
               task.provider,
               this.config.forceProvider,
@@ -670,6 +691,7 @@ export class Daemon {
     }
     const updated = updateTask(this.db, task.id, {
       status: "queued",
+      ...(target ? { target } : {}),
       attempts: 0,
       thread_id: null,
       worker_id: null,

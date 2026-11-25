@@ -8,7 +8,11 @@ import {
   updateTask,
   upsertWorker,
 } from "./db.mjs";
-import { resolveModelTarget } from "./model-catalog.mjs";
+import {
+  parseTargetJson,
+  resolveTargetPlan,
+  targetPlanFromResolution,
+} from "./model-catalog.mjs";
 import { WORKER_PROTOCOL_VERSION } from "./protocol.mjs";
 
 export function registerWorker(db, input) {
@@ -115,14 +119,15 @@ export function claimTasksForWorker(db, config, { workerId, limit } = {}) {
   for (const task of candidates) {
     const target =
       task.adapter === "t3"
-        ? resolveModelTarget(
+        ? resolveTargetPlan(
             config,
             {
-              provider: task.provider || config.forceProvider || config.t3Provider,
+              provider: task.provider || config.forceProvider || null,
               model: task.model || config.t3Model,
               effort: task.effort,
             },
             {
+              source: task.target_source || "claim",
               preferredProviders: [
                 task.provider,
                 config.forceProvider,
@@ -130,12 +135,15 @@ export function claimTasksForWorker(db, config, { workerId, limit } = {}) {
               ],
             },
           )
-        : {
-            provider: task.provider || null,
-            model: task.model || null,
-            effort: task.effort || null,
-            validation: { ok: true, errors: [], warnings: [], suggestions: [] },
-          };
+        : targetPlanFromResolution(
+            {
+              provider: task.provider || null,
+              model: task.model || null,
+              effort: task.effort || null,
+              validation: { ok: true, errors: [], warnings: [], suggestions: [] },
+            },
+            { source: task.target_source || "tier" },
+          );
     if (task.adapter === "t3" && target.model && !target.validation.ok) {
       updateTask(db, task.id, {
         status: "blocked",
@@ -158,6 +166,7 @@ export function claimTasksForWorker(db, config, { workerId, limit } = {}) {
       status: "running",
       provider: target.provider || task.provider,
       model: target.model || task.model,
+      target,
       worker_id: workerId,
       attempt_id: attemptId,
       attempts: task.attempts + 1,
@@ -176,7 +185,7 @@ export function claimTasksForWorker(db, config, { workerId, limit } = {}) {
       attempt: updated.attempts,
       attemptId,
     });
-    claimed.push({ ...updated, project_name: task.project_name });
+    claimed.push({ ...updated, target, project_name: task.project_name });
   }
   touchWorker(db, workerId, {
     running: Number(running.count || 0) + claimed.length,
@@ -240,7 +249,11 @@ export function workerAssignments(db, workerId) {
        WHERE t.worker_id = ? AND t.status = 'running'
        ORDER BY t.started_at ASC`,
     )
-    .all(workerId);
+    .all(workerId)
+    .map((task) => ({
+      ...task,
+      target: parseTargetJson(task.target_json),
+    }));
 }
 
 export function workerSnapshot(db, { staleMs = 30000 } = {}) {

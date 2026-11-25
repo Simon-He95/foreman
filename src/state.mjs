@@ -61,10 +61,15 @@ function policyLabel(task) {
   const provider = task.provider ? String(task.provider) : null;
   const model = task.model ? String(task.model) : null;
   const effort = task.effort || null;
+  const reasoning = task.reasoning_option
+    ? `${task.reasoning_option}=${task.reasoning_value || "-"}`
+    : null;
   return [
     provider ? `provider=${provider}` : null,
     model ? `model=${model}` : null,
     effort ? `effort=${effort}` : null,
+    reasoning ? `option=${reasoning}` : null,
+    task.target_source ? `source=${task.target_source}` : null,
   ]
     .filter(Boolean)
     .join(" ");

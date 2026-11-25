@@ -42,12 +42,18 @@ CREATE TABLE IF NOT EXISTS tasks (
   adapter TEXT NOT NULL DEFAULT 'mock',
   project_id TEXT,
   project_path TEXT NOT NULL,
+  project_key TEXT,
   worker_id TEXT,
   attempt_id TEXT,
   permission_mode TEXT,
   provider TEXT,
   model TEXT,
   effort TEXT,
+  target_json TEXT,
+  catalog_revision TEXT,
+  target_source TEXT,
+  reasoning_option TEXT,
+  reasoning_value TEXT,
   completion_token TEXT,
   artifact_path TEXT,
   artifact_contains TEXT,
@@ -126,12 +132,18 @@ const TASK_FIELDS = new Set([
   "adapter",
   "project_id",
   "project_path",
+  "project_key",
   "worker_id",
   "attempt_id",
   "permission_mode",
   "provider",
   "model",
   "effort",
+  "target_json",
+  "catalog_revision",
+  "target_source",
+  "reasoning_option",
+  "reasoning_value",
   "completion_token",
   "artifact_path",
   "artifact_contains",
@@ -157,7 +169,7 @@ function ensureColumn(db, table, column, definition) {
   }
 }
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 5;
 
 // Additive migrations only. The schema is created with CREATE IF NOT EXISTS,
 // then each migration brings older ledgers up to the current shape. Never
@@ -193,6 +205,22 @@ const MIGRATIONS = [
     version: 3,
     up(db) {
       ensureColumn(db, "tasks", "master_thread_id", "TEXT");
+    },
+  },
+  {
+    version: 4,
+    up(db) {
+      ensureColumn(db, "tasks", "target_json", "TEXT");
+      ensureColumn(db, "tasks", "catalog_revision", "TEXT");
+      ensureColumn(db, "tasks", "target_source", "TEXT");
+      ensureColumn(db, "tasks", "reasoning_option", "TEXT");
+      ensureColumn(db, "tasks", "reasoning_value", "TEXT");
+    },
+  },
+  {
+    version: 5,
+    up(db) {
+      ensureColumn(db, "tasks", "project_key", "TEXT");
     },
   },
 ];
@@ -480,8 +508,41 @@ export function addTask(db, input) {
   const masterThreadId = input.masterThreadId
     ? String(input.masterThreadId).trim().slice(0, 300)
     : null;
+  const projectPath = String(input.projectPath || process.cwd());
+  let projectKey = input.projectKey
+    ? String(input.projectKey).trim().slice(0, 500)
+    : input.projectId
+      ? `project:${input.projectId}`
+      : null;
+  if (!projectKey) {
+    try {
+      projectKey = `path:${fs.realpathSync(projectPath)}`;
+    } catch {
+      projectKey = `path:${path.resolve(projectPath)}`;
+    }
+  }
   const model = input.model ? String(input.model).trim().slice(0, 200) : null;
   const effort = input.effort ? String(input.effort).trim().slice(0, 40) : null;
+  const targetPlan =
+    input.target && typeof input.target === "object"
+      ? input.target
+      : input.targetPlan && typeof input.targetPlan === "object"
+        ? input.targetPlan
+        : null;
+  let targetJson = null;
+  if (targetPlan) {
+    targetJson = JSON.stringify(targetPlan).slice(0, 20000);
+  } else if (input.targetJson) {
+    targetJson = String(input.targetJson).slice(0, 20000);
+  }
+  const catalogRevision = input.catalogRevision || targetPlan?.catalogRevision || null;
+  const targetSource = input.targetSource || targetPlan?.source || null;
+  const reasoningOption =
+    input.reasoningOption || targetPlan?.reasoning?.optionId || null;
+  const reasoningValue =
+    input.reasoningValue ||
+    targetPlan?.reasoning?.value ||
+    null;
   const id = input.id || newId("tsk");
   const ts = now();
   const requestedPriority = Number(input.priority);
@@ -491,11 +552,12 @@ export function addTask(db, input) {
   db.prepare(
     `INSERT INTO tasks
       (id, parent_id, master_thread_id, title, brief, status, priority, adapter, project_id,
-       project_path, worker_id, permission_mode, provider, model, effort, completion_token, artifact_path,
+       project_path, project_key, worker_id, permission_mode, provider, model, effort, target_json,
+       catalog_revision, target_source, reasoning_option, reasoning_value, completion_token, artifact_path,
        artifact_contains, require_diff, thread_id, attempts, max_attempts,
        lease_until, not_before, heartbeat_at, last_polled_at, result, error,
        created_at, updated_at, started_at, finished_at)
-     VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?,
+     VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?,
              NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, NULL, NULL)`,
   ).run(
     id,
@@ -506,12 +568,18 @@ export function addTask(db, input) {
     priority,
     input.adapter || "mock",
     input.projectId ?? null,
-    String(input.projectPath || process.cwd()),
+    projectPath,
+    projectKey,
     input.workerId ?? null,
     input.permissionMode ?? null,
     provider,
     model,
     effort,
+    targetJson,
+    catalogRevision,
+    targetSource,
+    reasoningOption,
+    reasoningValue,
     completionToken,
     artifactPath,
     artifactContains,
@@ -527,6 +595,8 @@ export function addTask(db, input) {
     provider,
     model,
     effort,
+    targetSource,
+    catalogRevision,
   });
   return getTask(db, id);
 }
@@ -567,7 +637,33 @@ export function importRunningTask(db, input) {
   }
 }
 
+function expandTargetFields(input) {
+  const patch = { ...input };
+  const plan =
+    patch.target && typeof patch.target === "object"
+      ? patch.target
+      : patch.targetPlan && typeof patch.targetPlan === "object"
+        ? patch.targetPlan
+        : null;
+  if (plan) {
+    patch.target_json = JSON.stringify(plan).slice(0, 20000);
+    patch.catalog_revision = plan.catalogRevision || patch.catalogRevision || null;
+    patch.target_source = plan.source || patch.targetSource || null;
+    patch.reasoning_option =
+      plan.reasoning?.optionId || patch.reasoningOption || null;
+    patch.reasoning_value =
+      plan.reasoning?.value || patch.reasoningValue || null;
+  }
+  delete patch.target;
+  delete patch.targetPlan;
+  delete patch.targetSource;
+  delete patch.reasoningOption;
+  delete patch.reasoningValue;
+  return patch;
+}
+
 export function updateTask(db, id, patch) {
+  patch = expandTargetFields(patch);
   const keys = Object.keys(patch).filter((key) => TASK_FIELDS.has(key));
   if (keys.length === 0) return getTask(db, id);
   const assignments = keys.map((key) => `${key} = ?`).join(", ");

@@ -238,6 +238,20 @@
       background: var(--paper); color: var(--ink); font-size: 10px;
     }
     .route-row.warn select { border-color: var(--ochre); }
+    .route-actual {
+      color: var(--dim); font-family: var(--mono); font-size: 8.5px;
+      letter-spacing: .03em; overflow-wrap: anywhere;
+    }
+    .route-suggestion {
+      grid-column: 1 / -1; margin: -2px 0 5px 126px;
+      display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+      color: var(--dim); font-family: var(--mono); font-size: 9px;
+    }
+    .route-suggestion button {
+      border: 1px solid var(--line); background: transparent; color: var(--accent);
+      padding: 2px 5px; font-family: var(--mono); font-size: 9px; cursor: pointer;
+    }
+    .route-suggestion button:hover { border-color: var(--accent); }
     .route-row.bad select { border-color: var(--red); }
     .route-effort { font-family: var(--mono); }
     .routing-foot {
@@ -779,6 +793,10 @@
         ...(task.provider ? [metaItem("provider", task.provider)] : []),
         ...(task.model ? [metaItem("model", task.model)] : []),
         ...(task.effort ? [metaItem("effort", task.effort)] : []),
+        ...(task.reasoningOption
+          ? [metaItem("option", `${task.reasoningOption}=${task.reasoningValue || "default"}`)]
+          : []),
+        ...(task.targetSource ? [metaItem("via", task.targetSource)] : []),
         metaItem("project", task.projectName ? `${task.projectName} · ${task.projectShort}` : task.projectShort),
         task.thread_link
           ? el("span", {}, "thread ", el("a", { href: task.thread_link, target: "_blank", rel: "noreferrer", text: "打开线程" }))
@@ -887,6 +905,32 @@
       }
     }
 
+    function choiceForModel(catalog, modelValue) {
+      return (catalog || []).find(
+        (choice) => `${choice.provider}::${choice.model}` === modelValue,
+      ) || null;
+    }
+
+    function routeEffortsFor(catalog, modelValue, currentEffort = "") {
+      const choice = choiceForModel(catalog, modelValue);
+      const values = choice?.efforts?.length ? choice.efforts : EFFORTS;
+      return [...new Set([...(currentEffort ? [currentEffort] : []), ...values])]
+        .sort((a, b) => {
+          const ai = EFFORTS.indexOf(a);
+          const bi = EFFORTS.indexOf(b);
+          return (ai < 0 ? EFFORTS.length : ai) - (bi < 0 ? EFFORTS.length : bi);
+        });
+    }
+
+    function fillEffortOptions(select, values, current = "") {
+      select.replaceChildren(
+        el("option", { value: "", text: "默认" }),
+        ...values.map((effort) => el("option", { value: effort, text: effort })),
+      );
+      const next = values.includes(current) ? current : (values[0] || "");
+      select.value = next;
+    }
+
     function routeWarningFor(data, key) {
       const result = (data.leader.modelDiagnostics?.routes?.results || []).find(
         (entry) => entry.category === key,
@@ -894,14 +938,28 @@
       return result && !result.ok ? "bad" : result?.warnings?.length ? "warn" : "";
     }
 
+    function formatCatalogAge(observedAt) {
+      if (!observedAt) return "时间未知";
+      const seconds = Math.max(0, Math.round((Date.now() - observedAt) / 1000));
+      if (seconds < 60) return `${seconds}s 前`;
+      const minutes = Math.round(seconds / 60);
+      if (minutes < 60) return `${minutes}m 前`;
+      return `${Math.round(minutes / 60)}h 前`;
+    }
+
     function renderRouting(data, { force = false } = {}) {
       const leader = data.leader || {};
       const routes = leader.modelRoutes || {};
       const catalog = leader.modelCatalog || [];
+      const catalogMeta = leader.catalog || {};
+      const routeResults = leader.modelDiagnostics?.routes?.results || [];
       const fc = leader.masterFc;
       const signature = JSON.stringify({
         routes,
         catalog: catalog.map((choice) => choice.id),
+        catalogRevision: catalogMeta.revision || null,
+        catalogSource: catalogMeta.source || null,
+        catalogStale: Boolean(catalogMeta.stale),
         fc: fc ? `${fc.provider}::${fc.model}/${fc.effort}` : null,
         project: leader.masterProject || null,
       });
@@ -926,9 +984,12 @@
       } else if (runValidation?.warnings?.length) {
         warnings.push(...runValidation.warnings.map((warning) => `主 Run：${warning}`));
       }
-      for (const result of leader.modelDiagnostics?.routes?.results || []) {
+      for (const result of routeResults) {
         warnings.push(...result.errors.map((error) => `${result.category}：${error}`));
         warnings.push(...result.warnings.map((warning) => `${result.category}：${warning}`));
+      }
+      if (catalog.length && catalogMeta.stale) {
+        warnings.push(`T3 catalog 快照已过期（${formatCatalogAge(catalogMeta.observedAt)}）；新 provider 或模型可能未反映。`);
       }
       $("route-warnings").replaceChildren(
         ...warnings.map((warning) => el("div", { text: warning })),
@@ -938,40 +999,91 @@
       table.replaceChildren();
       for (const [key, label, hint] of ROUTE_ROWS) {
         const current = routes[key] || null;
+        const result = routeResults.find((entry) => entry.category === key) || null;
+        const actual = result?.reasoning?.optionId
+          ? `${result.reasoning.optionId}=${result.reasoning.value || "default"}`
+          : "";
         const modelSelect = el("select", {
           class: "route-model",
           "aria-label": `${label} model`,
         });
         appendRouteOptions(modelSelect, catalog, current);
         modelSelect.value = routeValue(current);
-        const effortSelect = el("select", { class: "route-effort", "aria-label": `${label} effort` },
-          el("option", { value: "", text: "默认" }),
-          ...EFFORTS.map((effort) => el("option", { value: effort, text: effort })),
+        const effortSelect = el("select", {
+          class: "route-effort",
+          "aria-label": `${label} effort`,
+        });
+        const initialValues = routeEffortsFor(catalog, modelSelect.value, current?.effort || "");
+        fillEffortOptions(effortSelect, initialValues, current?.effort || "");
+        const labelBox = el("div", { class: "route-label" },
+          el("strong", { text: label }),
+          el("span", { text: hint }),
+          ...(actual ? [el("span", { class: "route-actual", text: actual })] : []),
         );
-        effortSelect.value = current?.effort || "";
         const row = el("div", {
           class: `route-row ${routeWarningFor(data, key)}`,
           "data-route": key,
-        },
-          el("div", { class: "route-label" }, el("strong", { text: label }), el("span", { text: hint })),
-          modelSelect,
-          effortSelect,
-        );
+        }, labelBox, modelSelect, effortSelect);
         const markDirty = () => {
           state.routeDirty = true;
           $("routing-note").className = "routing-note";
           $("routing-note").textContent = "有未保存的路由。保存后才会影响新任务。";
           $("route-save").disabled = false;
         };
-        modelSelect.addEventListener("change", markDirty);
+        modelSelect.addEventListener("change", () => {
+          const desired = effortSelect.value;
+          const values = routeEffortsFor(catalog, modelSelect.value, "");
+          fillEffortOptions(
+            effortSelect,
+            values,
+            values.includes(desired) ? desired : "",
+          );
+          markDirty();
+        });
         effortSelect.addEventListener("change", markDirty);
+        if (result?.suggestions?.length) {
+          row.append(el("div", { class: "route-suggestion" },
+            el("span", { text: "建议" }),
+            ...result.suggestions.slice(0, 4).map((suggestion) =>
+              el("button", {
+                type: "button",
+                onClick: () => {
+                  const value = `${suggestion.provider}::${suggestion.model}`;
+                  if (![...modelSelect.options].some((option) => option.value === value)) {
+                    modelSelect.append(el("option", { value, text: `${suggestion.model} · suggested` }));
+                  }
+                  modelSelect.value = value;
+                  const desired = effortSelect.value;
+                  const values = routeEffortsFor(catalog, value, "");
+                  fillEffortOptions(
+                    effortSelect,
+                    values,
+                    values.includes(desired) ? desired : "",
+                  );
+                  markDirty();
+                },
+              }, `${suggestion.provider}::${suggestion.model}`),
+            ),
+          ));
+        }
         table.append(row);
       }
+      const sourceLabel = catalogMeta.source === "t3-cache"
+        ? "T3 cache 快照"
+        : catalogMeta.source === "t3-cache-empty"
+          ? "T3 cache 空"
+          : "T3 catalog 不可用";
+      const revision = catalogMeta.revision
+        ? ` · rev ${catalogMeta.revision.slice(0, 8)}`
+        : "";
+      const age = catalogMeta.observedAt
+        ? ` · ${formatCatalogAge(catalogMeta.observedAt)}`
+        : "";
       $("routing-note").className = "routing-note";
       $("routing-note").textContent = catalog.length
-        ? "路由只影响新任务；每个 master 独立保存。候选来自 T3 catalog 快照。"
+        ? `路由只影响新任务；每个 master 独立保存。候选来自 ${sourceLabel}${revision}${age}。`
         : "T3 catalog 不可用；保存前无法做完整模型预检。";
-      $("route-save").disabled = false;
+      $("route-save").disabled = !state.routeDirty;
     }
 
     function collectRoutes() {
@@ -1014,7 +1126,7 @@
         $("routing-note").className = "routing-note err";
         $("routing-note").textContent = `保存失败：${error.message}`;
       } finally {
-        $("route-save").disabled = false;
+        $("route-save").disabled = !state.routeDirty;
       }
     }
 

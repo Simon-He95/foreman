@@ -174,14 +174,106 @@ export function reasoningOptionValue(effort, availableValues = []) {
   return preference.find((value) => available.has(value)) || null;
 }
 
+export const MODEL_TIER_KEYS = ["light", "standard", "deep", "coding"];
+
+function normalizeTierTarget(value, fallbackProvider = null) {
+  if (!value) return null;
+  let target = value;
+  if (typeof target === "string") {
+    const at = target.indexOf("::");
+    if (at <= 0) {
+      if (!fallbackProvider) {
+        throw new Error(
+          `model tier ${target} needs provider::model or a provider fallback`,
+        );
+      }
+      target = { provider: fallbackProvider, model: target };
+    } else {
+      target = { provider: target.slice(0, at), model: target.slice(at + 2) };
+    }
+  }
+  if (!target || typeof target !== "object" || Array.isArray(target)) {
+    throw new Error("model tier must contain provider and model");
+  }
+  const normalized = {
+    ...target,
+    ...(target.provider || !fallbackProvider
+      ? {}
+      : { provider: fallbackProvider }),
+  };
+  return normalizeModelRoute(normalized);
+}
+
+export function normalizeModelTierTargets(tiers, fallbackProvider = null) {
+  if (!tiers || typeof tiers !== "object" || Array.isArray(tiers)) return {};
+  const result = {};
+  for (const [rawKey, value] of Object.entries(tiers)) {
+    const key = normalizeModelRouteKey(rawKey);
+    if (!key || !MODEL_TIER_KEYS.includes(key)) {
+      throw new Error(
+        `unknown model tier "${rawKey}"; use light, standard, deep, or coding`,
+      );
+    }
+    const target = normalizeTierTarget(value, fallbackProvider);
+    if (target) result[key] = target;
+  }
+  return result;
+}
+
+export function modelTierTargets(config) {
+  const legacyFast = config.modelFast || config.t3Model || null;
+  const legacyStrong = config.modelStrong || legacyFast;
+  const legacyCoding = config.modelCoding || legacyFast;
+  const defaults = {
+    light: {
+      provider: config.t3Provider || null,
+      model: legacyFast,
+      effort: "none",
+    },
+    standard: {
+      provider: config.t3Provider || null,
+      model: legacyFast,
+      effort: "auto",
+    },
+    deep: {
+      provider: config.t3Provider || null,
+      model: legacyStrong,
+      effort: "max",
+    },
+    coding: {
+      provider: config.t3Provider || null,
+      model: legacyCoding,
+      effort: "max",
+    },
+  };
+  const configured = normalizeModelTierTargets(
+    config.modelTiers,
+    config.t3Provider || null,
+  );
+  const result = {};
+  for (const key of MODEL_TIER_KEYS) {
+    const explicit = configured[key] || {};
+    result[key] = {
+      provider: explicit.provider || defaults[key].provider,
+      model: explicit.model || defaults[key].model,
+      effort: explicit.effort || defaults[key].effort,
+    };
+  }
+  return result;
+}
+
 export function modelCatalog(config) {
   const fast = config.modelFast || config.t3Model || null;
   // Strong/coding are explicit deployment choices. Do not invent a model name
   // from a provider id: model inventories change independently of Foreman.
+  const tiers = normalizeModelTierTargets(
+    config.modelTiers,
+    config.t3Provider || null,
+  );
   return {
-    fast,
-    strong: config.modelStrong || fast,
-    coding: config.modelCoding || fast,
+    fast: tiers.light?.model || fast,
+    strong: tiers.deep?.model || config.modelStrong || fast,
+    coding: tiers.coding?.model || config.modelCoding || fast,
   };
 }
 
@@ -255,12 +347,11 @@ export function planTaskModel(
     requestedCategory && requestedCategory !== "default"
       ? requestedCategory
       : classifyTask({ title, brief });
-  const base = {
-    light: { model: catalog.fast, effort: "none" },
-    standard: { model: catalog.fast, effort: "auto" },
-    deep: { model: catalog.strong, effort: "max" },
-    coding: { model: catalog.coding, effort: "max" },
-  }[tier];
+  const base = modelTierTargets(config)[tier] || {
+    provider: null,
+    model: catalog.fast,
+    effort: "none",
+  };
   const routeMap = normalizeModelRoutes(routes);
   const tierRoute = routeMap[tier] || null;
   const defaultRoute = routeMap.default || null;
@@ -356,7 +447,13 @@ export function planTaskModel(
   }
 
   if (!selectedModel && !selectedEffort) {
-    return { ...base, tier, provider: selectedProvider || null, source: "tier", route: null };
+    return {
+      ...base,
+      tier,
+      provider: selectedProvider || base.provider || null,
+      source: "tier",
+      route: null,
+    };
   }
   if (!selectedModel) {
     selectedModel = route?.model || base.model;
@@ -373,7 +470,10 @@ export function planTaskModel(
     model: selectedModel,
     effort: selectedEffort,
     tier,
-    provider: selectedProvider || null,
+    provider:
+      selectedProvider ||
+      (requestedModel ? null : base.provider) ||
+      null,
     source: modelOverride ? "override" : "explicit",
     route: null,
   };

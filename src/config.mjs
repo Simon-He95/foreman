@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { normalizeModelTierTargets } from "./model-policy.mjs";
 
 function num(value, fallback) {
   const n = Number(value);
@@ -328,6 +329,10 @@ export function loadConfig(overrides = {}) {
       pick("workerModelRoutes", "FOREMAN_WORKER_MODEL_ROUTES", null),
       null,
     ),
+    modelTiers: objectValue(
+      pick("modelTiers", "FOREMAN_MODEL_TIERS", null),
+      null,
+    ),
     modelFast: pick("modelFast", "FOREMAN_MODEL_FAST", null),
     modelStrong: pick("modelStrong", "FOREMAN_MODEL_STRONG", null),
     modelCoding: pick("modelCoding", "FOREMAN_MODEL_CODING", null),
@@ -349,6 +354,10 @@ export function loadConfig(overrides = {}) {
   config.modelFast = config.modelFast || config.t3Model || null;
   config.modelStrong = config.modelStrong || config.modelFast;
   config.modelCoding = config.modelCoding || config.modelFast;
+  if (config.modelTiers) {
+    // Fail at startup, not on the first task, when typed tier config is bad.
+    normalizeModelTierTargets(config.modelTiers, config.t3Provider || null);
+  }
   // This is only a fallback for deployments without a readable T3 catalog.
   // The catalog's option descriptor is used whenever it is available.
   config.t3ReasoningOption = config.t3ReasoningOption || "effort";
@@ -400,6 +409,7 @@ export function publicConfig(config) {
     forceProvider,
     forceModel,
     workerModelRoutes,
+    modelTiers,
     modelFast,
     modelStrong,
     modelCoding,
@@ -448,6 +458,7 @@ export function publicConfig(config) {
     forceProvider,
     forceModel,
     workerModelRoutes,
+    modelTiers,
     modelFast,
     modelStrong,
     modelCoding,

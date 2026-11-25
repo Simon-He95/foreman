@@ -42,7 +42,9 @@ import {
 } from "./model-policy.mjs";
 import {
   availableModelChoices,
-  resolveModelTarget,
+  modelCatalogSnapshot,
+  parseTargetJson,
+  resolveTargetPlan,
   validateModelRoutes,
   validateModelTarget,
 } from "./model-catalog.mjs";
@@ -188,7 +190,13 @@ function decorateTask(task, config, projectNames = null) {
       : null,
     projectShort: shortPath(config, task.project_path),
     projectName: projectNames?.get(task.project_id) || null,
+    projectKey: task.project_key || null,
     contractLabel: contractLabel(task),
+    target: parseTargetJson(task.target_json),
+    targetSource: task.target_source || null,
+    catalogRevision: task.catalog_revision || null,
+    reasoningOption: task.reasoning_option || null,
+    reasoningValue: task.reasoning_value || null,
   };
 }
 
@@ -203,6 +211,7 @@ function buildState({ db, config, daemon, leader }) {
     getWorkerModelRoutes(db, masterThreadId),
   );
   const routeValidation = validateModelRoutes(config, modelRoutes);
+  const catalog = modelCatalogSnapshot(config);
   const fcValidation = masterFc
     ? validateModelTarget(config, masterFc)
     : null;
@@ -228,6 +237,7 @@ function buildState({ db, config, daemon, leader }) {
       masterFc,
       modelRoutes,
       modelCatalog: availableModelChoices(config),
+      catalog,
       modelDiagnostics: {
         routes: routeValidation,
         currentRun: fcValidation,
@@ -323,7 +333,8 @@ export function startServer({ db, config, daemon, leader, logger = console }) {
       }
 
       if (req.method === "GET" && pathname === "/api/state") {
-        const etag = `W/"${stateVersion(db)}"`;
+        const catalogRevision = modelCatalogSnapshot(config).revision || "none";
+        const etag = `W/"${stateVersion(db)}-${catalogRevision}"`;
         if (req.headers["if-none-match"] === etag) {
           res.writeHead(304, {
             ...SECURITY_HEADERS,
@@ -354,6 +365,7 @@ export function startServer({ db, config, daemon, leader, logger = console }) {
             masterFc: masterThreadId ? getMasterFc(db, masterThreadId) : null,
             routes,
             catalog: availableModelChoices(config),
+            catalogMeta: modelCatalogSnapshot(config),
             validation: validateModelRoutes(config, routes),
             currentRun: masterThreadId
               ? validateModelTarget(
@@ -394,6 +406,7 @@ export function startServer({ db, config, daemon, leader, logger = console }) {
               next,
             ),
             validation,
+            catalogMeta: modelCatalogSnapshot(config),
           });
           return;
         }
@@ -646,18 +659,19 @@ export function startServer({ db, config, daemon, leader, logger = console }) {
           masterFc,
           modelOverride: body.modelOverride === true || Boolean(body.model),
         });
-        const resolution = resolveModelTarget(
+        const targetPlan = resolveTargetPlan(
           config,
           {
             provider:
               config.forceProvider ||
               plan.provider ||
               provider ||
-              config.t3Provider,
+              null,
             model: plan.model,
             effort: plan.effort,
           },
           {
+            source: plan.source,
             preferredProviders: [
               config.forceProvider,
               plan.provider,
@@ -669,12 +683,12 @@ export function startServer({ db, config, daemon, leader, logger = console }) {
         );
         let taskProvider;
         try {
-          taskProvider = assertT3ProviderId(resolution.provider);
+          taskProvider = assertT3ProviderId(targetPlan.provider);
         } catch (error) {
           throw httpError(400, error.message);
         }
-        if (adapter === "t3" && plan.model && !resolution.validation.ok) {
-          throw httpError(400, resolution.validation.errors.join("; "));
+        if (adapter === "t3" && plan.model && !targetPlan.validation.ok) {
+          throw httpError(400, targetPlan.validation.errors.join("; "));
         }
         const task = addTask(db, {
           title,
@@ -682,12 +696,14 @@ export function startServer({ db, config, daemon, leader, logger = console }) {
           priority: Number(body.priority) || 50,
           adapter,
           projectPath,
+          projectKey: resolvedProject.projectKey,
           projectId: resolvedProject.project?.id ?? null,
           workerId,
           masterThreadId,
           provider: taskProvider,
-          model: resolution.model || plan.model,
+          model: targetPlan.model || plan.model,
           effort: plan.effort,
+          target: targetPlan,
           maxAttempts: Number(body.maxAttempts) || config.maxAttempts,
           completionToken,
           artifactPath: safeArtifactPath,

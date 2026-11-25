@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -87,28 +88,78 @@ function settingsProviders(config = null) {
   return data?.providerInstances || {};
 }
 
-function cacheChoices(config = null) {
+function cacheFiles(config = null) {
   const caches = path.join(t3Home(config), "caches");
-  let files = [];
+  let names = [];
   try {
-    files = fs.readdirSync(caches).filter((name) => name.endsWith(".json"));
+    names = fs.readdirSync(caches).filter((name) => name.endsWith(".json"));
   } catch {
-    return [];
+    return { caches, entries: [] };
   }
+  const entries = names.map((name) => {
+    const file = path.join(caches, name);
+    let stat = null;
+    try {
+      stat = fs.statSync(file);
+    } catch {
+      // A cache file can disappear while T3 refreshes it.
+    }
+    return stat
+      ? { name, file, mtimeMs: stat.mtimeMs, size: stat.size }
+      : null;
+  }).filter(Boolean);
+  return { caches, entries };
+}
+
+/**
+ * A catalog snapshot with provenance. The T3 provider cache is currently the
+ * only stable capability source available to Foreman's control plane; it is a
+ * snapshot, not a live RPC. Surfacing source/revision/staleness lets callers
+ * avoid pretending otherwise.
+ */
+export function t3CatalogSnapshot(config = null) {
+  const { caches, entries } = cacheFiles(config);
   const instances = settingsProviders(config);
   const choices = [];
-  for (const file of files) {
-    const data = readJson(path.join(caches, file));
+  const providers = new Map();
+  let observedAt = null;
+  for (const entry of entries) {
+    const data = readJson(entry.file);
     if (!data) continue;
+    const checkedAt = data.checkedAt ? Date.parse(data.checkedAt) : NaN;
+    const seenAt = Number.isFinite(checkedAt)
+      ? Math.max(checkedAt, entry.mtimeMs)
+      : entry.mtimeMs;
+    if (Number.isFinite(seenAt)) {
+      observedAt = observedAt === null ? seenAt : Math.max(observedAt, seenAt);
+    }
     const provider =
       data.providerInstanceId ||
       data.instanceId ||
-      path.basename(file, ".json");
+      path.basename(entry.name, ".json");
     if (SKIP_PROVIDERS.has(provider)) continue;
     const settings = instances[provider];
-    if (settings && settings.enabled === false) continue;
+    if (
+      data.enabled === false ||
+      data.installed === false ||
+      (settings && settings.enabled === false)
+    ) {
+      continue;
+    }
     const displayName = data.displayName || provider;
-    for (const model of Array.isArray(data.models) ? data.models : []) {
+    const models = Array.isArray(data.models) ? data.models : [];
+    if (models.length && !providers.has(provider)) {
+      providers.set(provider, {
+        id: provider,
+        displayName,
+        status: data.status || null,
+        auth: data.auth?.status || null,
+        installed: data.installed !== false,
+        enabled: data.enabled !== false,
+        checkedAt: data.checkedAt || null,
+      });
+    }
+    for (const model of models) {
       const slug = String(model.slug || model.modelId || "").trim();
       if (!slug || MEDIA_MODEL.test(slug)) continue;
       const aliases = Array.isArray(model.aliases)
@@ -134,7 +185,39 @@ function cacheChoices(config = null) {
       });
     }
   }
-  return choices;
+  const revision = crypto
+    .createHash("sha256")
+    .update(
+      JSON.stringify({
+        entries: entries.map((entry) => [
+          entry.name,
+          Math.round(entry.mtimeMs),
+          entry.size,
+        ]),
+        models: choices.map((choice) => choice.id).sort(),
+      }),
+    )
+    .digest("hex")
+    .slice(0, 16);
+  const staleAfterMs = 6 * 60 * 60 * 1000;
+  const stale =
+    observedAt === null ? true : Date.now() - observedAt > staleAfterMs;
+  return {
+    source: choices.length ? "t3-cache" : entries.length ? "t3-cache-empty" : "unavailable",
+    live: false,
+    cacheDir: caches,
+    revision,
+    observedAt,
+    stale,
+    staleAfterMs,
+    providers: [...providers.values()],
+    choices,
+    fileCount: entries.length,
+  };
+}
+
+function cacheChoices(config = null) {
+  return t3CatalogSnapshot(config).choices;
 }
 
 function explicitChoices(config) {
@@ -188,7 +271,7 @@ function defaultProvider(config) {
  * confirms them.
  */
 export function advertisedModelChoices(config) {
-  return cacheChoices(config);
+  return t3CatalogSnapshot(config).choices;
 }
 
 export function leaderChoices(config) {

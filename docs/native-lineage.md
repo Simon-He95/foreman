@@ -20,8 +20,11 @@ master. This is what makes the T3 Thread details / Lineage panel useful.
 ## Requirements
 
 - **Same project:** the master and the task must be in the same T3 project.
-  T3 does not allow a local delegate into a different project. Use a master in
-  `demo-repo` for tasks in `demo-repo`; a Scratch master falls back to top-level.
+  Foreman compares canonical project paths (real paths) and records a
+  `project_key` on tasks; a symlink or alternate path does not create a false
+  project mismatch. T3 does not allow a local delegate into a different
+  project. Use a master in `demo-repo` for tasks in `demo-repo`; a Scratch
+  master falls back to top-level.
 - **Active parent run:** delegation happens inside the master's ACP
   `session/prompt`, so the master run must still be active. Automatic leader
   wakeups happen outside a run and therefore create top-level tasks.

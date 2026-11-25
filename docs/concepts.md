@@ -48,10 +48,12 @@ The T3 thread details/Lineage panel can then open the child directly.
 
 ## Model and effort
 
-Every task can carry a model slug and an effort level. The leader selects a
-difficulty tier (light / standard / deep / coding), and explicit user requests
-override the tier. The provider boundary translates `max` to the provider's
-actual maximum (for example Dim `xhigh` on some models).
+Every task can carry a provider/model pair and an effort level. The leader
+selects a difficulty tier (light / standard / deep / coding), and explicit user
+requests override the tier. The control plane resolves the pair against the T3
+catalog, records the actual reasoning option/value, and stores the result as a
+target plan. Workers execute that plan instead of re-resolving it against a
+different local cache. See [models and effort](models-and-effort.md).
 
 ## Completion contract
 

@@ -1,9 +1,36 @@
 import { spawn } from "node:child_process";
 import { normalizeEffort } from "../model-policy.mjs";
 import {
+  parseTargetJson,
   reasoningPlanForTarget,
   resolveModelTarget,
 } from "../model-catalog.mjs";
+
+function startError(message, code, retryable = true) {
+  const error = new Error(message);
+  error.code = code;
+  error.retryable = retryable;
+  return error;
+}
+
+function classifyStartFailure(output, code) {
+  const text = String(output || "");
+  if (
+    /(authentication is required|not authenticated|unauthorized|invalid api key|login required|auth(?:entication)? failed|status.?401|status.?403)/i.test(
+      text,
+    )
+  ) {
+    return startError(text, "auth", false);
+  }
+  if (
+    /(no default model|modelselection|unknown model|model not found|invalid model|not advertised)/i.test(
+      text,
+    )
+  ) {
+    return startError(text, "invalid-target", false);
+  }
+  return startError(`t3 thread start exited ${code}: ${text.trim()}`, "start", true);
+}
 
 function run(bin, args, { cwd, env, timeoutMs = 120000 } = {}) {
   return new Promise((resolve, reject) => {
@@ -254,36 +281,44 @@ export class T3Adapter {
       if (this.worktree && !needsMainTree) {
         args.push("--worktree", this.worktreeBase);
       }
-      const requestedModel = task.model
+      const target =
+        task.target && typeof task.target === "object"
+          ? task.target
+          : parseTargetJson(task.target_json);
+      const requestedModel = target?.model || (task.model
         ? String(task.model).trim()
-        : this.model;
-      const requestedProvider = task.provider || this.provider;
-      const effort = normalizeEffort(task.effort);
-      const resolution = this.config
-        ? resolveModelTarget(
-            this.config,
-            {
-              provider: requestedProvider,
-              model: requestedModel,
-              effort,
-            },
-            { preferredProviders: [requestedProvider, this.config.t3Provider] },
-          )
-        : null;
-      if (requestedModel && resolution && !resolution.validation.ok) {
-        throw new Error(
-          `model target rejected by T3 catalog: ${resolution.validation.errors.join("; ")}`,
+        : this.model);
+      const requestedProvider = target?.provider || task.provider || this.provider;
+      const effort = normalizeEffort(target?.effort || task.effort);
+      let resolution = null;
+      if (!target && this.config) {
+        resolution = resolveModelTarget(
+          this.config,
+          {
+            provider: requestedProvider,
+            model: requestedModel,
+            effort,
+          },
+          { preferredProviders: [requestedProvider, this.config.t3Provider] },
         );
+        if (requestedModel && !resolution.validation.ok) {
+          throw new Error(
+            `model target rejected by T3 catalog: ${resolution.validation.errors.join("; ")}`,
+          );
+        }
       }
       const effectiveModel = resolution?.model || requestedModel;
       const provider = resolution?.provider || requestedProvider;
       if (provider && effectiveModel) {
         args.push("--provider", provider, "--model", effectiveModel);
-        const reasoning = reasoningPlanForTarget(
-          this.config,
-          { provider, model: effectiveModel, effort },
-          task.reasoningOption || this.reasoningOption,
-        );
+        const reasoning =
+          target?.reasoning?.optionId
+            ? target.reasoning
+            : reasoningPlanForTarget(
+                this.config,
+                { provider, model: effectiveModel, effort },
+                task.reasoningOption || this.reasoningOption,
+              );
         if (reasoning.optionId && reasoning.value) {
           args.push(
             "--option",
@@ -315,8 +350,10 @@ export class T3Adapter {
         timeoutMs: 60000,
       });
       if (added.code !== 0) {
-        throw new Error(
+        throw startError(
           `t3 project add failed: ${added.stderr.trim() || added.stdout.trim()}`,
+          "project",
+          false,
         );
       }
       ({ code, stdout, stderr } = await this.call(buildArgs(), {
@@ -328,13 +365,13 @@ export class T3Adapter {
 
     if (code !== 0) {
       if (/no default model|modelselection/i.test(output)) {
-        throw new Error(
+        throw startError(
           `t3 thread start needs a provider/model. Set FOREMAN_T3_PROVIDER and FOREMAN_T3_MODEL (for example codex + gpt-6-astra). ${stderr.trim() || stdout.trim()}`,
+          "invalid-target",
+          false,
         );
       }
-      throw new Error(
-        `t3 thread start exited ${code}: ${stderr.trim() || stdout.trim()}`,
-      );
+      throw classifyStartFailure(output, code);
     }
     const threadId = parseThreadId(stdout) || parseThreadId(stderr);
     if (!threadId) {

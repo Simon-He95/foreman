@@ -256,6 +256,10 @@ foreman add "审查支付回调" \
   --effort max
 ```
 
+控制面会把每个任务的最终 target plan（provider/model、实际 reasoning
+option/value、来源和 catalog revision）持久化并传给 worker，worker 不会用
+另一份 T3 cache 重新猜模型。需要跨 provider 分档时使用 `modelTiers`。
+
 切换 provider 时请显式设置 `modelFast`、`modelStrong`、`modelCoding`。
 provider/model 身份和 reasoning option id 会从 T3 catalog 解析；同一个裸
 model 名被多个 provider 声明时会拒绝，而不是按字符串前缀猜 provider。

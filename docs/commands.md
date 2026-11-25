@@ -93,8 +93,9 @@ foreman models
 foreman models --json
 ```
 
-This prints the **effective** config and the catalog-derived reasoning option
-ids. It does not modify T3. Worker tier slugs are intentionally explicit; FC
+This prints the **effective** config, typed `tierTargets`, catalog provenance
+(`source`, `revision`, `observedAt`, `stale`), and catalog-derived reasoning
+option ids. It does not modify T3. Worker tier slugs are intentionally explicit; FC
 choices are discovered from enabled T3 providers (plus `leaderChoices`). Route
 and task preflight reads the T3 provider cache, so advertised model changes are
 noticed without a Foreman restart. The cache is a snapshot; restart T3 after

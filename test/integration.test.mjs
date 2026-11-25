@@ -54,6 +54,7 @@ import {
 import {
   reasoningPlanForTarget,
   resolveModelTarget,
+  resolveTargetPlan,
   validateModelTarget,
 } from "../src/model-catalog.mjs";
 import { notifyMaster } from "../src/notifier.mjs";
@@ -223,6 +224,45 @@ test("model policy chooses by difficulty and honors explicit overrides", () => {
 
 });
 
+test("typed model tiers keep provider, model, and effort together", () => {
+  const config = testConfig(tempDir(), {
+    t3Provider: "dim",
+    t3Model: "dim/default",
+    modelTiers: {
+      light: { provider: "dim", model: "dim/light", effort: "none" },
+      deep: { provider: "dim", model: "dim/deep", effort: "max" },
+      coding: { provider: "claudeAgent", model: "claude-opus-5-5", effort: "high" },
+    },
+  });
+  const light = planTaskModel(config, {
+    title: "rename a label",
+    brief: "single file",
+    adapter: "t3",
+    category: "light",
+  });
+  assert.equal(light.provider, "dim");
+  assert.equal(light.model, "dim/light");
+  assert.equal(light.effort, "none");
+  const deep = planTaskModel(config, {
+    title: "review architecture",
+    brief: "deep review",
+    adapter: "t3",
+    category: "deep",
+  });
+  assert.equal(deep.provider, "dim");
+  assert.equal(deep.model, "dim/deep");
+  assert.equal(deep.effort, "max");
+  const coding = planTaskModel(config, {
+    title: "fix flaky test",
+    brief: "implement a regression test",
+    adapter: "t3",
+    category: "coding",
+  });
+  assert.equal(coding.provider, "claudeAgent");
+  assert.equal(coding.model, "claude-opus-5-5");
+  assert.equal(coding.effort, "high");
+});
+
 test("model routes keep provider and model paired and support explicit overrides", () => {
   const config = testConfig(tempDir(), {
     t3Provider: "dim",
@@ -281,7 +321,7 @@ test("model routes keep provider and model paired and support explicit overrides
     masterFc,
   });
   assert.equal(notAutoInherited.model, "dimcode-api-oauth/deepseek-v4.1-flash");
-  assert.equal(notAutoInherited.provider, null);
+  assert.equal(notAutoInherited.provider, "dim");
 
   const inferred = planTaskModel(config, {
     title: "查实时天气",
@@ -375,6 +415,9 @@ test("user-directed routes persist per master and drive delegated tasks", async 
       "dimcode-api-oauth/deepseek-v4.1-flash",
     );
     assert.equal(applied[1].task.effort, "max");
+    assert.equal(applied[1].task.target.source, "route");
+    assert.ok(applied[1].task.target.catalogRevision);
+    assert.ok(applied[1].task.projectKey);
     const stored = getWorkerModelRoutes(db, "mcp:route-master");
     assert.equal(stored.standard.provider, "dim");
     const prompt = leader.buildPrompt({
@@ -498,6 +541,64 @@ test("model catalog preflight validates advertised provider/model/effort pairs",
   });
   assert.equal(autoEffort.ok, true);
   assert.equal(autoEffort.reasoning.value, null);
+});
+
+test("resolved target plans persist the actual reasoning option", () => {
+  const dir = tempDir();
+  const home = path.join(dir, "t3-home");
+  fs.mkdirSync(path.join(home, "caches"), { recursive: true });
+  fs.writeFileSync(
+    path.join(home, "caches", "dim.json"),
+    JSON.stringify({
+      providerInstanceId: "dim",
+      models: [
+        {
+          slug: "dim/designed",
+          name: "Designed",
+          capabilities: {
+            optionDescriptors: [
+              {
+                id: "thought_level",
+                role: "reasoning",
+                type: "select",
+                options: [{ id: "high" }, { id: "xhigh" }],
+              },
+            ],
+          },
+        },
+      ],
+    }),
+  );
+  const config = testConfig(dir, { t3Home: home, t3Provider: "dim" });
+  const plan = resolveTargetPlan(
+    config,
+    { provider: "dim", model: "dim/designed", effort: "max" },
+    { source: "route" },
+  );
+  assert.equal(plan.reasoning.optionId, "thought_level");
+  assert.equal(plan.reasoning.value, "xhigh");
+  assert.equal(plan.source, "route");
+  assert.equal(plan.catalogSource, "t3-cache");
+  assert.ok(plan.catalogRevision);
+  const db = openDb(config.dbPath);
+  try {
+    const task = addTask(db, {
+      title: "resolved target",
+      adapter: "t3",
+      projectPath: dir,
+      provider: plan.provider,
+      model: plan.model,
+      effort: plan.effort,
+      target: plan,
+    });
+    assert.equal(task.target_source, "route");
+    assert.equal(task.reasoning_option, "thought_level");
+    assert.equal(task.reasoning_value, "xhigh");
+    assert.equal(JSON.parse(task.target_json).catalogRevision, plan.catalogRevision);
+  } finally {
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("FC leader choices expose provider models and per-provider effort", () => {
@@ -866,7 +967,22 @@ test("worker claim blocks an invalid target before it can start", () => {
     path.join(home, "caches", "dim.json"),
     JSON.stringify({
       providerInstanceId: "dim",
-      models: [{ slug: "dim/valid", name: "Valid" }],
+      models: [
+        {
+          slug: "dim/valid",
+          name: "Valid",
+          capabilities: {
+            optionDescriptors: [
+              {
+                id: "thought_level",
+                role: "reasoning",
+                type: "select",
+                options: [{ id: "high" }, { id: "max" }],
+              },
+            ],
+          },
+        },
+      ],
     }),
   );
   const config = testConfig(dir, {
@@ -898,6 +1014,26 @@ test("worker claim blocks an invalid target before it can start", () => {
     });
     assert.equal(claimed.length, 0);
     assert.equal(getTask(db, task.id).status, "blocked");
+
+    const valid = addTask(db, {
+      title: "valid worker target",
+      brief: "should be claimed with a plan",
+      adapter: "t3",
+      projectPath: dir,
+      provider: "dim",
+      model: "dim/valid",
+      effort: "max",
+    });
+    const claimedValid = claimTasksForWorker(db, config, {
+      workerId: "worker-a",
+      limit: 1,
+    });
+    assert.equal(claimedValid.length, 1);
+    assert.equal(claimedValid[0].id, valid.id);
+    assert.equal(claimedValid[0].target.provider, "dim");
+    assert.equal(claimedValid[0].target.reasoning.optionId, "thought_level");
+    assert.equal(claimedValid[0].target.reasoning.value, "max");
+    assert.equal(getTask(db, valid.id).target_source, "claim");
   } finally {
     db.close();
     fs.rmSync(dir, { recursive: true, force: true });
@@ -1018,6 +1154,58 @@ test("T3 adapter passes the task model and reasoning effort", async () => {
     assert.equal(
       crossProviderArgs[crossProviderArgs.indexOf("--option") + 1],
       "effort=high",
+    );
+
+    await adapter.start({
+      project_path: dir,
+      title: "control-plane target plan",
+      brief: "use the resolved plan",
+      target: {
+        provider: "dim",
+        model: "dim/strong",
+        effort: "max",
+        reasoning: { optionId: "resolved_level", value: "peak" },
+        source: "route",
+        catalogRevision: "test-revision",
+      },
+    });
+    const plannedArgs = fs.readFileSync(out, "utf8").trimEnd().split("\n");
+    assert.equal(plannedArgs[plannedArgs.indexOf("--option") + 1], "resolved_level=peak");
+    assert.equal(plannedArgs[plannedArgs.indexOf("--model") + 1], "dim/strong");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("T3 adapter classifies authentication failures as non-retryable", async () => {
+  const dir = tempDir();
+  try {
+    const script = path.join(dir, "fake-auth.sh");
+    fs.writeFileSync(
+      script,
+      "#!/bin/sh\nprintf '%s\\n' 'Provider authentication is required' >&2\nexit 1\n",
+      { mode: 0o755 },
+    );
+    const config = testConfig(dir, {
+      t3Bin: script,
+      t3Provider: "dim",
+      t3Model: "dim/fast",
+      t3Worktree: false,
+    });
+    const adapter = createAdapter("t3", config);
+    await assert.rejects(
+      adapter.start({
+        project_path: dir,
+        title: "auth failure",
+        brief: "should classify",
+        target: {
+          provider: "dim",
+          model: "dim/fast",
+          effort: "max",
+          reasoning: { optionId: "thought_level", value: "max" },
+        },
+      }),
+      (error) => error.code === "auth" && error.retryable === false,
     );
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -1622,6 +1810,7 @@ test("project registry resolves tasks by name and stores project_id", () => {
     const resolved = resolveTaskProject(db, config, { project: "repo" });
     assert.equal(resolved.projectPath, other);
     assert.equal(resolved.adapter, "mock");
+    assert.equal(resolved.projectKey, `project:${project.id}`);
 
     const nested = path.join(dir, "special-project");
     fs.mkdirSync(nested);
@@ -1637,9 +1826,11 @@ test("project registry resolves tasks by name and stores project_id", () => {
       brief: "x",
       adapter: resolved.adapter,
       projectPath: resolved.projectPath,
+      projectKey: resolved.projectKey,
       projectId: resolved.project.id,
     });
     assert.equal(getTask(db, task.id).project_id, project.id);
+    assert.equal(getTask(db, task.id).project_key, `project:${project.id}`);
   } finally {
     db.close();
     fs.rmSync(dir, { recursive: true, force: true });
@@ -1734,6 +1925,46 @@ test("retry refuses live or unsafe blocked tasks", () => {
     assert.equal(repaired.provider, "dim");
     assert.equal(repaired.model, "dimcode-api-oauth/deepseek-v4.1-flash");
     assert.equal(repaired.effort, "max");
+  } finally {
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("non-retryable auth failures block immediately instead of consuming retries", async () => {
+  const dir = tempDir();
+  const config = testConfig(dir, { maxAttempts: 3 });
+  const db = openDb(config.dbPath);
+  try {
+    const fake = {
+      name: "fake",
+      leaseMs: 1000,
+      async start() {
+        const error = new Error("Provider authentication is required");
+        error.code = "auth";
+        error.retryable = false;
+        throw error;
+      },
+      async poll() {
+        return { state: "running" };
+      },
+    };
+    const daemon = new Daemon({
+      db,
+      config,
+      adapters: { mock: fake },
+      logger: quiet,
+    });
+    const task = addTask(db, {
+      title: "auth failure",
+      adapter: "mock",
+      projectPath: dir,
+    });
+    await daemon.tick();
+    const blocked = getTask(db, task.id);
+    assert.equal(blocked.status, "blocked");
+    assert.equal(blocked.attempts, 1);
+    assert.match(blocked.error, /auth/);
   } finally {
     db.close();
     fs.rmSync(dir, { recursive: true, force: true });

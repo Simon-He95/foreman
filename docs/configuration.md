@@ -43,8 +43,9 @@ node src/cli.mjs init
 | `t3WorktreeBase` | `FOREMAN_T3_WORKTREE_BASE` | worktree base ref |
 | `t3ReasoningOption` | `FOREMAN_T3_REASONING_OPTION` | fallback reasoning option id only when the T3 catalog has no descriptor; the model's `role: reasoning` descriptor id and allowed values win when available |
 | `modelFast` | `FOREMAN_MODEL_FAST` | light/standard model |
-| `modelStrong` | `FOREMAN_MODEL_STRONG` | deep/research model |
-| `modelCoding` | `FOREMAN_MODEL_CODING` | coding/refactor model |
+| `modelStrong` | `FOREMAN_MODEL_STRONG` | deep/research model (legacy bare form) |
+| `modelCoding` | `FOREMAN_MODEL_CODING` | coding/refactor model (legacy bare form) |
+| `modelTiers` | `FOREMAN_MODEL_TIERS` | typed tier targets: `{light, standard, deep, coding}` each `{provider, model, effort}`; preferred over legacy bare fields |
 | `forceModel` | `FOREMAN_FORCE_MODEL` | optional hard worker-model lock; ignores task overrides |
 | `forceProvider` | `FOREMAN_FORCE_PROVIDER` | optional hard worker-provider lock; ignores task overrides |
 | `workerModelRoutes` | `FOREMAN_WORKER_MODEL_ROUTES` | optional category routes: `light`, `standard`, `deep`, `coding`, `default`; each is `{provider, model, effort}` |

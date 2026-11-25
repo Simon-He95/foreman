@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createAdapterRegistry } from "./adapters/index.mjs";
 import { verifyContract } from "./contract.mjs";
+import { parseTargetJson } from "./model-catalog.mjs";
 import { WORKER_PROTOCOL_VERSION } from "./protocol.mjs";
 
 async function postJson(url, token, body, timeoutMs = 15000) {
@@ -303,8 +304,13 @@ export class WorkerRunner {
   }
 
   mapTask(task) {
+    const target =
+      task.target && typeof task.target === "object"
+        ? task.target
+        : parseTargetJson(task.target_json);
+    const withTarget = target ? { ...task, target } : task;
     const mappings = Object.keys(this.projectMap);
-    if (mappings.length === 0) return task;
+    if (mappings.length === 0) return withTarget;
     const name = task.project_name || null;
     if (!name) {
       throw new Error("worker requires project_name for mapped execution");
@@ -313,7 +319,7 @@ export class WorkerRunner {
     if (!local) {
       throw new Error(`no local mapping for project ${name}`);
     }
-    return { ...task, project_path: path.resolve(this.config.cwd, local) };
+    return { ...withTarget, project_path: path.resolve(this.config.cwd, local) };
   }
 
   async claim() {
@@ -351,9 +357,11 @@ export class WorkerRunner {
         );
       } catch (error) {
         this.logger.error(`[worker] start ${task.id} failed: ${error.message}`);
-        await this.report(task.id, "failed", {
+        const state = error.retryable === false ? "blocked" : "failed";
+        const code = error.code ? `${error.code}: ` : "";
+        await this.report(task.id, state, {
           attemptId: task.attempt_id,
-          error: `worker start failed: ${error.message}`,
+          error: `worker start failed: ${code}${error.message}`,
         });
       }
     }

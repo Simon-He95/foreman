@@ -8,9 +8,23 @@ All notable changes to Foreman are documented here. The format follows
 
 ### Added
 
+- Immutable per-task target plans with provider/model, actual reasoning
+  option/value, source, and catalog revision. Local daemons and worker
+  assignments use the control plane's plan rather than re-resolving a
+  possibly different T3 cache.
+- Typed `modelTiers` configuration with per-tier provider/model/effort targets;
+  legacy bare tier fields remain supported.
+- Catalog provenance (`source`, `revision`, `observedAt`, `stale`) in state,
+  `/api/model-routes`, `foreman models`, and the dashboard. ETags change when
+  the T3 cache changes.
+- Non-retryable T3 auth/model error classification; auth failures block the
+  task instead of consuming retries.
 - Dashboard **Model routing** panel with provider/model/effort validation
   against the T3 catalog snapshot, per-category editing, “use current Run for
   all”, and a read-only catalog-aware route summary.
+- Dashboard shows catalog provenance/age, actual reasoning option values,
+  per-model effort choices, actionable repair suggestions for invalid routes,
+  and keeps Save disabled until the route table is dirty.
 - `/api/model-routes` API for reading, validating, and updating the current
   master's routing policy.
 - Model catalog preflight warnings for custom registrations and unavailable
@@ -44,6 +58,8 @@ All notable changes to Foreman are documented here. The format follows
 - Setup no longer invents provider-specific strong/coding model names. Tier
   defaults now fall back to the selected worker model, while per-category
   routes are the explicit way to use a different provider/model.
+- Project identity is persisted as a canonical `project_key` (registered
+  project id or real path), and native-lineage checks compare canonical paths.
 
 ## [1.2.1] - 2026-11-25
 

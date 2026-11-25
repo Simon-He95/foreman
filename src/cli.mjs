@@ -42,10 +42,12 @@ import {
   mergeModelRoutes,
   modelCatalog,
   modelRouteText,
+  modelTierTargets,
   planTaskModel,
 } from "./model-policy.mjs";
 import {
-  resolveModelTarget,
+  modelCatalogSnapshot,
+  resolveTargetPlan,
 } from "./model-catalog.mjs";
 import {
   leaderProviderSummary,
@@ -375,6 +377,15 @@ async function commandInit(flags) {
       forceModel: flags["force-model"] ? String(flags["force-model"]).trim() : null,
       forceProvider: flags["force-provider"] ? String(flags["force-provider"]).trim() : null,
       workerModelRoutes: null,
+      modelTiers:
+        mode === "t3"
+          ? {
+              light: { provider, model, effort: "none" },
+              standard: { provider, model, effort: "auto" },
+              deep: { provider, model, effort: "max" },
+              coding: { provider, model, effort: "max" },
+            }
+          : null,
       t3ReasoningOption: mode === "t3" ? (provider === "dim" ? "thought_level" : "effort") : null,
       t3Worktree: false,
       concurrency: Number(flags.concurrency || 2),
@@ -474,18 +485,19 @@ async function commandAdd(flags, positional) {
     routes,
     modelOverride: Boolean(flags.model),
   });
-  const resolution = resolveModelTarget(
+  const targetPlan = resolveTargetPlan(
     config,
     {
       provider:
         config.forceProvider ||
         plan.provider ||
         flags.provider ||
-        config.t3Provider,
+        null,
       model: plan.model,
       effort: plan.effort,
     },
     {
+      source: plan.source,
       preferredProviders: [
         config.forceProvider,
         plan.provider,
@@ -494,9 +506,9 @@ async function commandAdd(flags, positional) {
       ],
     },
   );
-  const provider = assertT3ProviderId(resolution.provider);
-  if (adapter === "t3" && plan.model && !resolution.validation.ok) {
-    throw new Error(resolution.validation.errors.join("; "));
+  const provider = assertT3ProviderId(targetPlan.provider);
+  if (adapter === "t3" && plan.model && !targetPlan.validation.ok) {
+    throw new Error(targetPlan.validation.errors.join("; "));
   }
   const task = addTask(db, {
     title,
@@ -504,11 +516,13 @@ async function commandAdd(flags, positional) {
     priority: Number(flags.priority) || 50,
     adapter,
     projectPath,
+    projectKey: resolved.projectKey,
     projectId: resolved.project?.id ?? null,
     permissionMode: flags.permission || null,
     provider,
-    model: resolution.model || plan.model,
+    model: targetPlan.model || plan.model,
     effort: plan.effort,
+    target: targetPlan,
     maxAttempts: Number(flags["max-attempts"]) || config.maxAttempts,
     completionToken: flags["done-token"]
       ? String(flags["done-token"]).trim()
@@ -559,6 +573,8 @@ async function commandModels(flags) {
       forceProvider: config.forceProvider || null,
       forceModel: config.forceModel || null,
       workerRoutes,
+      tierTargets: modelTierTargets(config),
+      catalog: modelCatalogSnapshot(config),
       fast: catalog.fast,
       strong: catalog.strong,
       coding: catalog.coding,
@@ -575,6 +591,9 @@ async function commandModels(flags) {
     console.log(`provider          ${payload.provider || "(not set)"}`);
     console.log(`force             ${payload.forceProvider || "-"} / ${payload.forceModel || "-"}`);
     console.log(`worker routes     ${modelRouteText(payload.workerRoutes)}`);
+    console.log(
+      `catalog           ${payload.catalog.source} · rev ${String(payload.catalog.revision).slice(0, 8)}${payload.catalog.stale ? " · stale" : ""}`,
+    );
     console.log(
       `reasoning option  ${payload.reasoningOption || "(catalog-driven when available)"}`,
     );

@@ -290,6 +290,11 @@ available when a deployment truly needs a fixed fleet. Provider/model identity
 and reasoning option ids are resolved from the T3 catalog; a bare model slug
 claimed by multiple providers is rejected instead of guessed from its string.
 
+The control plane stores each task's resolved target plan (provider/model,
+actual reasoning option/value, source, and catalog revision) and passes it to
+workers, so a worker with a different T3 cache cannot silently choose another
+model. Typed `modelTiers` can assign a different provider/model to each tier.
+
 When you create a **Foreman (control plane)** thread in T3, its model picker
 lists configured FC provider/model choices and its effort picker sets the
 leader effort for that thread. `leaderChoices` can add explicit provider/model

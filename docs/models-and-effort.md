@@ -121,6 +121,45 @@ node src/cli.mjs add "review migration" \
   --effort max
 ```
 
+## Typed tier targets and resolved plans
+
+The legacy `modelFast` / `modelStrong` / `modelCoding` fields are bare slugs
+that share one `t3Provider`. For cross-provider fleets, use `modelTiers`:
+
+```json
+{
+  "modelTiers": {
+    "light":     { "provider": "dim", "model": "dimcode-api-oauth/deepseek-v4.1-flash", "effort": "none" },
+    "standard":  { "provider": "dim", "model": "dimcode-api-oauth/deepseek-v4.1-flash", "effort": "auto" },
+    "deep":      { "provider": "dim", "model": "dimcode-api-oauth/gpt-6.2-astra", "effort": "max" },
+    "coding":    { "provider": "claudeAgent", "model": "claude-opus-5-5", "effort": "max" }
+  }
+}
+```
+
+A task stores a `target_json` snapshot with the resolved provider/model,
+canonical effort, actual reasoning option/value, source (`route`, `tier`,
+`override`, or `force`), catalog revision, and validation warnings. The
+control plane passes that plan to local daemons and worker assignments; a
+worker does not re-resolve it against a different T3 cache.
+
+`foreman models --json` exposes both `tierTargets` and catalog provenance.
+`/api/model-routes` exposes `catalogMeta`.
+
+## Catalog provenance and auth
+
+The control plane currently reads T3's provider cache. It is a snapshot, not a
+live capability/auth RPC. Every snapshot carries `source`, `revision`,
+`observedAt`, and `stale`; the dashboard shows this and the state ETag changes
+when the cache changes. Provider status/auth from the cache are surfaced as
+warnings, but authentication failures can still surface when T3 starts a
+thread. Those errors are classified as non-retryable `auth` errors and blocked
+instead of being retried until the max-attempt budget.
+
+If T3 exposes a live capability endpoint, implement it behind the same
+catalog snapshot interface and mark `live: true`; the router and task plan do
+not need to change.
+
 ## Provider option names
 
 Foreman does not choose the reasoning option id from the provider name. It

@@ -372,16 +372,25 @@ function webThreadLink(link) {
   return link;
 }
 
+function canonicalProjectPath(value) {
+  const resolved = path.resolve(String(value || ROOT));
+  try {
+    return fs.realpathSync(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
 async function delegatePendingTasks(applied, session) {
   const pending = (Array.isArray(applied) ? applied : []).filter(
     (entry) => entry?.type === "add_task" && entry.pending && entry.task,
   );
   if (!pending.length) return [];
-  const sessionProject = path.resolve(session?.cwd || ROOT);
+  const sessionProject = canonicalProjectPath(session?.cwd || ROOT);
   const results = [];
   for (const entry of pending) {
     const task = entry.task;
-    const taskProject = path.resolve(task.projectPath || sessionProject);
+    const taskProject = canonicalProjectPath(task.projectPath || sessionProject);
     if (!mcpEndpoint || taskProject !== sessionProject) {
       // T3 only lets a local delegate inherit the parent's project. A different
       // project cannot have native lineage without a linked environment, so

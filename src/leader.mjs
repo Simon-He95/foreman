@@ -36,7 +36,7 @@ import {
 import { normalizeLeaderOverride } from "./leader-options.mjs";
 import {
   reasoningPlanForTarget,
-  resolveModelTarget,
+  resolveTargetPlan,
   validateModelRoutes,
   validateModelTarget,
 } from "./model-catalog.mjs";
@@ -676,18 +676,19 @@ export class Leader {
             modelOverride:
               action.modelOverride === true || Boolean(userPreference?.model),
           });
-          const resolution = resolveModelTarget(
+          const targetPlan = resolveTargetPlan(
             this.config,
             {
               provider:
                 this.config.forceProvider ||
                 plan.provider ||
                 action.provider ||
-                this.config.t3Provider,
+                null,
               model: plan.model,
               effort: plan.effort,
             },
             {
+              source: plan.source,
               preferredProviders: [
                 this.config.forceProvider,
                 plan.provider,
@@ -697,7 +698,7 @@ export class Leader {
               ],
             },
           );
-          let provider = resolution.provider;
+          let provider = targetPlan.provider;
           try {
             provider = assertT3ProviderId(provider);
           } catch (error) {
@@ -708,7 +709,7 @@ export class Leader {
             });
             continue;
           }
-          const targetValidation = resolution.validation;
+          const targetValidation = targetPlan.validation;
           if (adapter === "t3" && plan.model && !targetValidation.ok) {
             applied.push({
               type: "add_task",
@@ -725,10 +726,12 @@ export class Leader {
             priority: Number(action.priority) || 50,
             adapter,
             projectPath: requested,
+            projectKey: resolved.projectKey,
             projectId: resolved.project?.id ?? null,
             masterThreadId: masterThreadId || null,
-            model: resolution.model || plan.model,
+            model: targetPlan.model || plan.model,
             effort: plan.effort,
+            target: targetPlan,
             provider,
             maxAttempts: this.config.maxAttempts,
             completionToken: action.completionToken

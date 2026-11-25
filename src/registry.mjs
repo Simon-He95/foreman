@@ -23,6 +23,15 @@ export function ensureDefaultProject(db, config) {
   }
 }
 
+function projectKeyFor(config, projectPath, row = null) {
+  if (row?.id) return `project:${row.id}`;
+  try {
+    return `path:${fs.realpathSync(projectPath)}`;
+  } catch {
+    return `path:${path.resolve(config.cwd, projectPath)}`;
+  }
+}
+
 export function resolveTaskProject(db, config, { project, projectPath } = {}) {
   if (project) {
     let row = getProject(db, project);
@@ -74,6 +83,7 @@ export function resolveTaskProject(db, config, { project, projectPath } = {}) {
     return {
       project: row,
       projectPath: localPath,
+      projectKey: projectKeyFor(config, localPath, row),
       adapter: row.default_adapter || null,
     };
   }
@@ -91,6 +101,7 @@ export function resolveTaskProject(db, config, { project, projectPath } = {}) {
   return {
     project: row,
     projectPath: resolved,
+    projectKey: projectKeyFor(config, resolved, row),
     adapter: row?.default_adapter || null,
   };
 }

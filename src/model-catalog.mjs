@@ -1,12 +1,22 @@
 import {
   advertisedModelChoices,
   leaderChoices,
+  t3CatalogSnapshot,
 } from "./leader-options.mjs";
 import {
   normalizeEffort,
   normalizeModelRoutes,
   reasoningOptionValue,
 } from "./model-policy.mjs";
+
+function catalogFields(snapshot) {
+  return {
+    catalogRevision: snapshot.revision || null,
+    catalogSource: snapshot.source || "unknown",
+    catalogObservedAt: snapshot.observedAt || null,
+    catalogStale: Boolean(snapshot.stale),
+  };
+}
 
 function sameModelSuffix(choice, model) {
   const wanted = String(model || "").split("/").pop()?.toLowerCase();
@@ -76,7 +86,8 @@ export function resolveModelTarget(
   const inputProvider = String(target?.provider || "").trim() || null;
   const inputModel = String(target?.model || "").trim() || null;
   const effort = normalizeEffort(target?.effort);
-  const choices = advertisedModelChoices(config);
+  const snapshot = t3CatalogSnapshot(config);
+  const choices = snapshot.choices;
 
   if (!inputModel) {
     const fallbackProvider =
@@ -94,6 +105,7 @@ export function resolveModelTarget(
         warnings: [],
         suggestions: [],
       },
+      ...catalogFields(snapshot),
     };
   }
 
@@ -113,6 +125,7 @@ export function resolveModelTarget(
         warnings: ["T3 provider catalog is unavailable; target was not preflighted"],
         suggestions: [],
       },
+      ...catalogFields(snapshot),
     };
   }
 
@@ -162,7 +175,67 @@ export function resolveModelTarget(
     effort,
     inferredProvider: !inputProvider,
     validation,
+    ...catalogFields(snapshot),
   };
+}
+
+/**
+ * The immutable plan persisted with a task. The task's provider/model/effort
+ * remain queryable columns for compatibility; targetPlan is the audit trail of
+ * how the target was resolved and what actual reasoning option will be sent.
+ */
+export function targetPlanFromResolution(
+  resolution,
+  { source = "unknown", requested = null } = {},
+) {
+  const validation = resolution?.validation || {};
+  const reasoning = validation.reasoning || resolution?.reasoning || null;
+  return {
+    provider: resolution?.provider || null,
+    model: resolution?.model || null,
+    effort: resolution?.effort || null,
+    reasoning,
+    source: source || "unknown",
+    requested: requested
+      ? {
+          provider: requested.provider || null,
+          model: requested.model || null,
+          effort: requested.effort || null,
+        }
+      : null,
+    catalogRevision: resolution?.catalogRevision || null,
+    catalogSource: resolution?.catalogSource || null,
+    catalogObservedAt: resolution?.catalogObservedAt || null,
+    catalogStale: Boolean(resolution?.catalogStale),
+    validation: {
+      ok: validation.ok !== false,
+      errors: validation.errors || [],
+      warnings: validation.warnings || [],
+      suggestions: validation.suggestions || [],
+    },
+  };
+}
+
+export function parseTargetJson(value) {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function resolveTargetPlan(
+  config,
+  target,
+  { preferredProviders = [], source = "unknown" } = {},
+) {
+  const resolution = resolveModelTarget(config, target, { preferredProviders });
+  return targetPlanFromResolution(resolution, {
+    source,
+    requested: target,
+  });
 }
 
 export function reasoningPlanForTarget(config, target, fallbackOption = null) {
@@ -352,6 +425,20 @@ export function validateModelRoutes(config, routes) {
     warnings: results.flatMap((result) =>
       result.warnings.map((warning) => `${result.category}: ${warning}`),
     ),
+  };
+}
+
+export function modelCatalogSnapshot(config) {
+  const snapshot = t3CatalogSnapshot(config);
+  return {
+    source: snapshot.source,
+    live: snapshot.live,
+    revision: snapshot.revision,
+    observedAt: snapshot.observedAt,
+    stale: snapshot.stale,
+    staleAfterMs: snapshot.staleAfterMs,
+    providers: snapshot.providers,
+    fileCount: snapshot.fileCount,
   };
 }
 
