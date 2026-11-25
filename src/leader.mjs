@@ -291,9 +291,15 @@ export class Leader {
     const prompt = this.buildPrompt({ message, trigger, events });
     const workspace = path.join(this.config.dataDir, "leader-workspace");
     fs.mkdirSync(workspace, { recursive: true });
+    const args = ["exec"];
+    if (this.config.leaderModel) {
+      // The legacy dim CLI wants a bare model id, not T3's provider/model slug.
+      const model = String(this.config.leaderModel).trim();
+      args.push("--model", model.includes("/") ? model.slice(model.lastIndexOf("/") + 1) : model);
+    }
     const { code, stdout, stderr } = await run(
       this.config.dimBin,
-      ["exec"],
+      args,
       {
         cwd: workspace,
         timeoutMs: this.config.leaderTimeoutMs,

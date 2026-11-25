@@ -25,6 +25,7 @@ node src/cli.mjs init
 | `port` / `host` | `FOREMAN_PORT` / `FOREMAN_HOST` | dashboard bind |
 | `authToken` | `FOREMAN_TOKEN` | dashboard/API bearer token |
 | `leaderMode` | `FOREMAN_LEADER` | `rule`, `dim`, `codex`, `claude` |
+| `leaderModel` | `FOREMAN_LEADER_MODEL` | optional leader model (bare id for legacy `dim`) |
 | `leaderTickMs` | `FOREMAN_LEADER_TICK_MS` | automatic wake interval |
 
 ## T3
@@ -33,7 +34,7 @@ node src/cli.mjs init
 |---|---|---|
 | `t3Bin` | `FOREMAN_T3_BIN` | T3 CLI path |
 | `t3Project` | `FOREMAN_T3_PROJECT` | project to create worker threads in |
-| `t3Provider` | `FOREMAN_T3_PROVIDER` | worker provider id, e.g. `dim` |
+| `t3Provider` | `FOREMAN_T3_PROVIDER` | worker provider id, e.g. `dim`, `dima`, `codex`, `claudeAgent` |
 | `t3Model` | `FOREMAN_T3_MODEL` | default worker model |
 | `t3Worktree` | `FOREMAN_T3_WORKTREE` | create a worktree per thread |
 | `t3WorktreeBase` | `FOREMAN_T3_WORKTREE_BASE` | worktree base ref |
@@ -41,6 +42,26 @@ node src/cli.mjs init
 | `modelFast` | `FOREMAN_MODEL_FAST` | light/standard model |
 | `modelStrong` | `FOREMAN_MODEL_STRONG` | deep/research model |
 | `modelCoding` | `FOREMAN_MODEL_CODING` | coding/refactor model |
+
+The leader model is independent from workers. For example, a smart leader and
+cheaper workers:
+
+```json
+{
+  "leaderMode": "dim",
+  "leaderModel": "gpt-6.2-astra",
+  "t3Provider": "codex",
+  "t3Model": "gpt-6-astra",
+  "modelFast": "gpt-6-astra",
+  "modelStrong": "gpt-6-astra",
+  "modelCoding": "gpt-6-astra"
+}
+```
+
+To make **all** workers use one model, set `modelFast`, `modelStrong`, and
+`modelCoding` to the same slug. Explicit task/leader overrides can still choose
+another model. There is not yet a per-task provider field; `t3Provider` applies
+to all worker threads.
 
 ## Native lineage
 

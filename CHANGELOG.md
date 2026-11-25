@@ -4,6 +4,20 @@ All notable changes to Foreman are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `leaderModel` is passed to the legacy `dim exec` leader backend.
+- `foreman init --leader-model` and `foreman models` expose the master/leader
+  model separately from worker model tiers.
+
+### Notes
+
+- `t3Provider` applies to all worker threads; per-task provider selection is
+  still future work. `modelFast` / `modelStrong` / `modelCoding` can be pinned to
+  one model for a uniform worker fleet.
+
 ## [1.1.0] - 2026-11-25
 
 ### Added

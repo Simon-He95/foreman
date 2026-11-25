@@ -294,6 +294,16 @@ async function commandInit(flags) {
       mode === "t3"
         ? String(flags.leader || (await ask("Leader (rule/dim/codex/claude)", "dim")))
         : "rule";
+    const leaderModel =
+      mode === "t3" && leaderMode !== "rule"
+        ? String(
+            flags["leader-model"] ||
+              (await ask(
+                "Leader model (optional; e.g. gpt-6.2-astra for dim)",
+                leaderMode === "dim" ? "gpt-6.2-astra" : "",
+              )),
+          ).trim() || null
+        : null;
     const dataDir = path.resolve(
       cwd,
       String(flags["data-dir"] || (await ask("Data directory", ".foreman"))),
@@ -340,6 +350,7 @@ async function commandInit(flags) {
       t3Worktree: false,
       concurrency: Number(flags.concurrency || 2),
       leaderMode,
+      leaderModel,
       leaderTickMs: 3000,
       port,
       allowedProjectRoots: [
@@ -357,7 +368,7 @@ async function commandInit(flags) {
     console.log(`  adapter   ${mode}`);
     console.log(`  project   ${projectPath}`);
     console.log(`  data      ${dataDir}`);
-    console.log(`  leader    ${leaderMode}`);
+    console.log(`  leader    ${leaderMode}${leaderModel ? ` / ${leaderModel}` : ""}`);
     if (mode === "t3") {
       console.log(`  provider  ${provider}`);
       console.log(`  model     ${model}`);
@@ -457,6 +468,10 @@ async function commandModels(flags) {
   try {
     const catalog = modelCatalog(config);
     const payload = {
+      leader: {
+        mode: config.leaderMode,
+        model: config.leaderModel || null,
+      },
       provider: config.t3Provider || null,
       reasoningOption: config.t3ReasoningOption || null,
       fast: catalog.fast,
@@ -468,6 +483,7 @@ async function commandModels(flags) {
       console.log(JSON.stringify(payload, null, 2));
       return;
     }
+    console.log(`leader            ${payload.leader.mode}${payload.leader.model ? ` / ${payload.leader.model}` : ""}`);
     console.log(`provider          ${payload.provider || "(not set)"}`);
     console.log(`reasoning option  ${payload.reasoningOption || "(not set)"}`);
     console.log(`fast              ${payload.fast || "(provider default)"}`);
@@ -1332,7 +1348,7 @@ function usage() {
   console.log(`foreman — a durable leader for agent fleets
 
 usage:
-  foreman init [--yes] [--project path] [--adapter mock|t3] [--provider dim] [--model slug] [--leader dim] [--data-dir .foreman] [--port 3777] [--register] [--force]
+  foreman init [--yes] [--project path] [--adapter mock|t3] [--provider dim] [--model slug] [--leader dim] [--leader-model slug] [--data-dir .foreman] [--port 3777] [--register] [--force]
   foreman add <title> --brief "..." [--priority 50] [--adapter mock|t3] [--project name|path]
                 [--done-token DONE] [--artifact path] [--artifact-contains text] [--require-diff]
   foreman project list
