@@ -12,6 +12,8 @@ Use these values for the repository settings; they are the canonical copy:
   (GitHub → Settings → General → Social preview; the API has no upload endpoint)
 - **Issues**: on; **Discussions**: on; **Wiki**: off; **Projects**: off
 - **Merge policy**: squash merge; delete branch on merge
+- **Branch protection**: `main` requires `test (22)` and `test (24)`; linear
+  history; no force pushes or deletions; conversation resolution on
 
 ## Release checklist
 
