@@ -16,7 +16,8 @@ All notable changes to Foreman are documented here. The format follows
   own leader provider, model, and effort at creation time.
 - `leaderProvider` / `leaderChoices` and a native `dima` leader backend.
 - FC selection is persisted per T3 master thread, per-master turn queues avoid
-  cross-master blocking, and fallback replies are visibly marked.
+  cross-master blocking, task notifications route to the creating master, and
+  fallback replies are visibly marked.
 - Per-task `provider` selection through CLI `--provider`, `POST /api/tasks`,
   task cards, and leader `add_task` actions. Reasoning option ids are selected
   per provider (`thought_level`, `effort`, `reasoningEffort`), including when a

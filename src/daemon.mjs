@@ -261,6 +261,7 @@ export class Daemon {
               `▶️ 开始：${task.title}（${task.id}）${model ? ` · ${model}` : ""}${task.effort ? ` / ${task.effort}` : ""}`,
               started.link,
             ].join("\n"),
+            task.master_thread_id,
           );
         }
         this.stats.starts += 1;
@@ -418,6 +419,7 @@ export class Daemon {
         this.db,
         this.config,
         `✅ 完成：${fresh.title}（${fresh.id}）· ${formatDuration(ts - (fresh.started_at || fresh.created_at))}\n${String(asText(outcome.result) || "").slice(0, 1200)}${fresh.thread_link ? `\n${fresh.thread_link}` : ""}`,
+        fresh.master_thread_id,
       );
     } else if (status === "failed") {
       this.stats.failed += 1;
@@ -434,6 +436,7 @@ export class Daemon {
         this.db,
         this.config,
         `❌ 失败：${fresh.title}（${fresh.id}）\n${String(error || "").slice(0, 1200)}${fresh.thread_link ? `\n${fresh.thread_link}` : ""}`,
+        fresh.master_thread_id,
       );
     } else if (status === "blocked") {
       appendInbox(this.db, "needs_human", fresh.id, {
@@ -448,6 +451,7 @@ export class Daemon {
         this.db,
         this.config,
         `⛔ 等待人工：${fresh.title}（${fresh.id}）\n${String(error || "").slice(0, 1200)}${fresh.thread_link ? `\n${fresh.thread_link}` : ""}`,
+        fresh.master_thread_id,
       );
     } else {
       this.stats.cancelled += 1;

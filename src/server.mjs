@@ -545,6 +545,9 @@ export function startServer({ db, config, daemon, leader, logger = console }) {
           projectPath,
           projectId: resolvedProject.project?.id ?? null,
           workerId,
+          masterThreadId: body.masterThreadId
+            ? String(body.masterThreadId).slice(0, 300)
+            : null,
           provider: config.forceProvider || provider || null,
           model: plan.model,
           effort: plan.effort,

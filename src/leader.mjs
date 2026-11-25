@@ -472,7 +472,12 @@ export class Leader {
 
   async applyActions(
     actions,
-    { allowDestructive = true, userPreference = null, deferAddTasks = false } = {},
+    {
+      allowDestructive = true,
+      userPreference = null,
+      deferAddTasks = false,
+      masterThreadId = null,
+    } = {},
   ) {
     const applied = [];
     for (const action of actions) {
@@ -523,6 +528,7 @@ export class Leader {
             adapter,
             projectPath: requested,
             projectId: resolved.project?.id ?? null,
+            masterThreadId: masterThreadId || null,
             model: plan.model,
             effort: plan.effort,
             provider:
@@ -718,6 +724,7 @@ export class Leader {
       allowDestructive:
         trigger === "user" || Boolean(this.config.leaderAutoDestructive),
       deferAddTasks,
+      masterThreadId,
       userPreference:
         trigger === "user" && message
           ? inferUserModelPreference(message, this.config)

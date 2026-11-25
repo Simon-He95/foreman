@@ -303,6 +303,15 @@ test("master FC selection persists and per-master turns do not block each other"
       { provider: "dima", model: "deepseek-v4.1-flash", effort: "high" },
     );
 
+    const routedTask = addTask(db, {
+      title: "master-routed task",
+      brief: "routing",
+      adapter: "mock",
+      projectPath: dir,
+      masterThreadId: "mcp:master-a",
+    });
+    assert.equal(routedTask.master_thread_id, "mcp:master-a");
+
     const leader = new Leader({ db, config, logger: quiet });
     let active = 0;
     let maxActive = 0;
@@ -1215,6 +1224,15 @@ test("leader turns are serialized across devices", async () => {
   const config = testConfig(dir);
   const db = openDb(config.dbPath);
   try {
+    const routedTask = addTask(db, {
+      title: "master-routed task",
+      brief: "routing",
+      adapter: "mock",
+      projectPath: dir,
+      masterThreadId: "mcp:master-a",
+    });
+    assert.equal(routedTask.master_thread_id, "mcp:master-a");
+
     const leader = new Leader({ db, config, logger: quiet });
     let active = 0;
     let maxActive = 0;
@@ -1596,6 +1614,19 @@ test("notifyMaster pushes to the bound T3 master thread", async () => {
     const args = fs.readFileSync(out, "utf8").trimEnd().split("\n");
     assert.deepEqual(args.slice(0, 3), ["thread", "send", "mcp:test-master"]);
     assert.match(args[3], /^📣 Foreman：✅ 完成：通知测试/);
+
+    fs.rmSync(out, { force: true });
+    assert.equal(
+      notifyMaster(db, config, "✅ 完成：其他 master", "mcp:other-master"),
+      true,
+    );
+    await waitFor(
+      () =>
+        fs.existsSync(out) &&
+        fs.readFileSync(out, "utf8").includes("mcp:other-master"),
+    );
+    const routed = fs.readFileSync(out, "utf8").trimEnd().split("\n");
+    assert.deepEqual(routed.slice(0, 3), ["thread", "send", "mcp:other-master"]);
     db.close();
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

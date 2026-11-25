@@ -67,7 +67,7 @@ provider. The task error includes the rejected option.
 
 - Check T3 is running: `node src/cli.mjs doctor`
 - Register the provider: `npm run t3:register-foreman`, restart T3
-- Check `t3 thread start ... --provider foreman --model default` manually
+- Check `t3 thread start ... --provider foreman --model dima::deepseek-v4.1-flash` manually
 
 ## Dashboard/API is unreachable
 
@@ -77,3 +77,20 @@ lsof -nP -iTCP:3777 -sTCP:LISTEN
 ```
 
 If remote, remember the token and do not expose plain HTTP.
+
+
+## FC model picker is empty or stale
+
+The T3 provider catalog is cached by T3, not polled by Foreman. After registering
+a provider or changing its models:
+
+```bash
+npm run t3:register-dima   # if using the Rust alpha
+# restart T3
+cd /path/to/foreman
+foreman models             # inspect discovered FC choices
+foreman doctor             # checks T3, FC choices, and the bound master FC
+```
+
+If a dima choice is missing, add an explicit fallback in `leaderChoices` and
+restart T3 so the Foreman provider advertises it.

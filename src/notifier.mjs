@@ -6,12 +6,14 @@ function clip(text, max = 3000) {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
 
-export function notifyMaster(db, config, text) {
-  let threadId = null;
-  try {
-    threadId = getMeta(db, "master_thread_id");
-  } catch {
-    return false;
+export function notifyMaster(db, config, text, preferredThreadId = null) {
+  let threadId = preferredThreadId ? String(preferredThreadId) : null;
+  if (!threadId) {
+    try {
+      threadId = getMeta(db, "master_thread_id");
+    } catch {
+      return false;
+    }
   }
   if (!threadId) return false;
   const body = `📣 Foreman：${clip(text, 3000)}`;

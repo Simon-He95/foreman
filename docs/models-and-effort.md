@@ -94,8 +94,10 @@ leader providers/models/efforts.
   provider caches. This is useful when a provider's cache only advertises a
   default model (for example an alpha provider).
 - The selection is persisted per T3 master thread (`meta.master_fc:<threadId>`).
-  Resuming/restarting the T3 thread reuses it. Automatic leader wakeups use the
-  primary master's stored FC; use `foreman master set` to change the primary.
+  Resuming/restarting the T3 thread reuses it. Tasks created by a master carry
+  its `master_thread_id`, so their start/completion/failure notifications return
+  to that master. Automatic leader wakeups use the primary master's stored FC;
+  use `foreman master set` to change the primary.
 - Turns are queued per master thread (`masterThreadId`), so a slow FC provider
   in one master does not block another master.
 - If the selected provider fails, the reply is prefixed with an explicit

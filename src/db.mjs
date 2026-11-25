@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS workers (
 CREATE TABLE IF NOT EXISTS tasks (
   id TEXT PRIMARY KEY,
   parent_id TEXT,
+  master_thread_id TEXT,
   title TEXT NOT NULL,
   brief TEXT NOT NULL,
   status TEXT NOT NULL,
@@ -117,6 +118,7 @@ export const STATUSES = [
 
 const TASK_FIELDS = new Set([
   "parent_id",
+  "master_thread_id",
   "title",
   "brief",
   "status",
@@ -155,7 +157,7 @@ function ensureColumn(db, table, column, definition) {
   }
 }
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 // Additive migrations only. The schema is created with CREATE IF NOT EXISTS,
 // then each migration brings older ledgers up to the current shape. Never
@@ -185,6 +187,12 @@ const MIGRATIONS = [
     version: 2,
     up(db) {
       ensureColumn(db, "tasks", "provider", "TEXT");
+    },
+  },
+  {
+    version: 3,
+    up(db) {
+      ensureColumn(db, "tasks", "master_thread_id", "TEXT");
     },
   },
 ];
@@ -469,6 +477,9 @@ export function addTask(db, input) {
   const provider = input.provider
     ? String(input.provider).trim().slice(0, 120)
     : null;
+  const masterThreadId = input.masterThreadId
+    ? String(input.masterThreadId).trim().slice(0, 300)
+    : null;
   const model = input.model ? String(input.model).trim().slice(0, 200) : null;
   const effort = input.effort ? String(input.effort).trim().slice(0, 40) : null;
   const id = input.id || newId("tsk");
@@ -479,16 +490,17 @@ export function addTask(db, input) {
     : 50;
   db.prepare(
     `INSERT INTO tasks
-      (id, parent_id, title, brief, status, priority, adapter, project_id,
+      (id, parent_id, master_thread_id, title, brief, status, priority, adapter, project_id,
        project_path, worker_id, permission_mode, provider, model, effort, completion_token, artifact_path,
        artifact_contains, require_diff, thread_id, attempts, max_attempts,
        lease_until, not_before, heartbeat_at, last_polled_at, result, error,
        created_at, updated_at, started_at, finished_at)
-     VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?,
+     VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?,
              NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, NULL, NULL)`,
   ).run(
     id,
     input.parentId ?? null,
+    masterThreadId,
     title,
     brief,
     priority,
