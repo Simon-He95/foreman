@@ -175,6 +175,36 @@ foreman master test
 原生 Lineage 要求主控和任务在同一个 T3 项目；跨项目或普通 thread 会回退到
 top-level worker。详见 [原生 Lineage](docs/native-lineage.md)。
 
+## 日常使用顺序
+
+正常运行需要**两个长期进程**，按顺序启动：
+
+1. **T3 Code**：打开桌面 App，或运行
+   `npx t3@latest serve --no-browser --port 3773`。保持它运行，worker 线程在 T3 里。
+2. **Foreman**：在项目目录运行：
+
+   ```bash
+   cd /path/to/your/repo
+   foreman up
+   ```
+
+   `foreman up` 是阻塞进程，包含 daemon、leader、API 和 dashboard，所以不要关掉
+   这个终端；需要常驻可以用 tmux 或 `foreman service`。
+
+之后选一个入口：
+
+- **T3 主控**：打开绑定的 thread（`foreman master show`）直接说话。
+  首次用 `foreman master create --title "Foreman"` 创建；provider 选
+  **Foreman (control plane)**。
+- **Dashboard / CLI**：打开 `http://127.0.0.1:3777`，或在另一个终端执行
+  `foreman add ...` / `foreman status`。
+
+Dashboard 是可选的。关掉 `foreman up` 后任务不会继续推进；重启后 daemon 会按
+thread id reattach。关掉 T3 则 worker thread 也会消失。macOS 需要 24/7 常驻时，
+用 `foreman service` 安装 launchd，并让 T3 也保持运行。
+
+同一个 data 目录不要启动两个 `foreman up`，pid lock 会拒绝第二个实例。
+
 ## 核心概念
 
 | 概念 | 说明 |

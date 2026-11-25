@@ -217,6 +217,38 @@ Native lineage requires the master and the task to share the same T3 project.
 A master in a different project, or a non-Foreman thread, falls back to a
 top-level worker thread. See [Native lineage](docs/native-lineage.md).
 
+## Daily operation
+
+Normal use needs **two long-running processes**, started in this order:
+
+1. **T3 Code** — desktop app, or `npx t3@latest serve --no-browser --port 3773`.
+   Keep it running; worker threads live inside T3.
+2. **Foreman** — from your project directory:
+
+   ```bash
+   cd /path/to/your/repo
+   foreman up
+   ```
+
+   `foreman up` is a blocking process. It runs the daemon, leader loop, API, and
+   dashboard, so keep that terminal open (or use tmux / `foreman service`).
+
+Then choose one interface:
+
+- **T3 master** — open the bound thread (`foreman master show`) and chat there.
+  Create it once with `foreman master create --title "Foreman"`; the provider is
+  **Foreman (control plane)**.
+- **Dashboard / CLI** — open `http://127.0.0.1:3777` or run
+  `foreman add ...` / `foreman status` from another terminal.
+
+The dashboard is optional. If you close the `foreman up` process, queued and
+running tasks stop progressing; restarting `foreman up` reattaches by thread id.
+If you close T3, its worker threads disappear. For unattended 24/7 operation on
+macOS, use `foreman service` and keep T3 running as a service/app as well.
+
+Do not run two `foreman up` processes against the same data directory; the pid
+lock will reject the second one.
+
 ## Core concepts
 
 | Concept | What it means |

@@ -175,6 +175,33 @@ foreman master show
 foreman master test
 ```
 
+## Daily use: keep two processes alive
+
+After the one-time setup, normal operation is:
+
+```bash
+# terminal 1: T3 must stay running
+npx t3@latest serve --no-browser --port 3773
+# or keep the T3 Code desktop app open
+
+# terminal 2: Foreman daemon + leader + dashboard
+cd /path/to/your/repo
+foreman up
+```
+
+`foreman up` blocks on purpose. Do not close that terminal while work is
+running; use tmux or `foreman service` if you need it to survive logout. T3 must
+also stay running. The dashboard at `http://127.0.0.1:3777` is optional.
+
+Then either:
+
+- open the T3 master thread (`foreman master show`) and ask for work there, or
+- add work from another terminal with `foreman add "..." --brief "..."`.
+
+If you restart Foreman, running T3 tasks are reattached by thread id; do not run
+two `foreman up` processes against the same data directory. If you restart T3,
+start T3 first, then `foreman up`.
+
 ## Verify the install
 
 ```bash
