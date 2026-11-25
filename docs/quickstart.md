@@ -24,7 +24,8 @@ matches what you want.
 | Port `3777` | Foreman dashboard | change it if occupied |
 
 There is currently **no one-click desktop installer** and the npm package is
-not published yet. Install from a source checkout:
+not published yet (`foreman-ops` is in first-release review). Install from a
+source checkout:
 
 ```bash
 git clone https://github.com/Simon-He95/foreman.git

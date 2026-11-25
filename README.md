@@ -66,8 +66,8 @@ truth.
 Foreman does **not** bundle T3 Code and does **not** include a model provider.
 T3 is the execution layer and worker UI; a provider such as DimAgent, Codex, or
 Claude supplies the model and tools. There is no one-click desktop installer
-yet, and the npm package is not published yet: source checkout is the supported
-install path today.
+yet, and the npm package `foreman-ops` is still in its first-release review:
+source checkout is the supported install path today.
 
 | Dependency | Required for | Notes |
 | --- | --- | --- |
