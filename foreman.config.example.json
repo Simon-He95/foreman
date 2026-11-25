@@ -1,0 +1,20 @@
+{
+  "adapter": "mock",
+  "executionMode": "local",
+  "workerCapacity": 1,
+  "workerProjectMap": {},
+  "projectPath": ".",
+  "concurrency": 3,
+  "tickMs": 1000,
+  "leaderMode": "rule",
+  "leaderTickMs": 20000,
+  "leaderAutoDestructive": false,
+  "modelFast": null,
+  "modelStrong": null,
+  "modelCoding": null,
+  "t3ReasoningOption": null,
+  "port": 3777,
+  "host": "127.0.0.1",
+  "allowedProjectRoots": ["."],
+  "goal": "Dispatch pending work reliably and report exactly what is running, queued, blocked, and done."
+}

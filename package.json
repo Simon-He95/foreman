@@ -1,0 +1,68 @@
+{
+  "name": "@simon-he95/foreman",
+  "version": "0.1.0",
+  "description": "Always-on control plane for coding-agent fleets on T3 Code: durable task ledger, leases, retries, and accurate status.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Simon He (https://github.com/Simon-He95)",
+  "homepage": "https://github.com/Simon-He95/foreman#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Simon-He95/foreman.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Simon-He95/foreman/issues"
+  },
+  "keywords": [
+    "ai-agents",
+    "agent-orchestration",
+    "coding-agents",
+    "control-plane",
+    "t3-code",
+    "task-queue",
+    "sqlite",
+    "acp",
+    "claude",
+    "codex",
+    "dimagent"
+  ],
+  "bin": {
+    "foreman": "./src/cli.mjs"
+  },
+  "files": [
+    "src/",
+    "public/",
+    "scripts/",
+    "tools/",
+    "docs/",
+    "foreman.config.example.json",
+    "README.md",
+    "README.zh-CN.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.5"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "start": "node src/cli.mjs up",
+    "daemon": "node src/cli.mjs daemon",
+    "demo": "node src/cli.mjs demo",
+    "test": "node --test test/*.test.mjs",
+    "doctor": "node src/cli.mjs doctor",
+    "prepublishOnly": "npm test",
+    "t3:register-mock": "node scripts/setup-t3-mock.mjs",
+    "t3:register-dim": "node scripts/setup-t3-dim.mjs",
+    "smoke:t3": "node scripts/t3-smoke.mjs",
+    "t3:register-foreman": "node scripts/setup-t3-foreman.mjs"
+  },
+  "dependencies": {
+    "t3": "^0.1.11"
+  },
+  "devDependencies": {
+    "@openai/codex": "^0.172.0"
+  }
+}

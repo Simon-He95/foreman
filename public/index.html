@@ -1,0 +1,984 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Foreman · agent ops</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0a0b0c;
+      --panel: #111315;
+      --panel-2: #15181b;
+      --line: #252a2e;
+      --line-soft: #1b1f22;
+      --text: #e9e7e1;
+      --muted: #8a918f;
+      --dim: #5f6664;
+      --lime: #c8f45a;
+      --blue: #8ab4ff;
+      --amber: #ffb84d;
+      --red: #ff6b5e;
+      --teal: #58d6b0;
+      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(900px 500px at 15% -10%, rgba(200, 244, 90, 0.07), transparent 60%),
+        radial-gradient(700px 400px at 100% 0%, rgba(138, 180, 255, 0.05), transparent 55%),
+        var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, input, textarea, select { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    code, pre, .mono { font-family: var(--mono); }
+
+    .top {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      min-height: 58px;
+      padding: 10px 20px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(10, 11, 12, 0.86);
+      backdrop-filter: blur(14px);
+    }
+    .brand { display: flex; align-items: baseline; gap: 9px; white-space: nowrap; }
+    .brand .mark {
+      width: 9px; height: 9px; border-radius: 2px;
+      background: var(--lime);
+      box-shadow: 0 0 14px rgba(200, 244, 90, 0.55);
+      align-self: center;
+    }
+    .brand strong { font-family: var(--mono); font-size: 15px; letter-spacing: 0.16em; }
+    .brand .sub { font-family: var(--mono); font-size: 10px; color: var(--dim); letter-spacing: 0.18em; text-transform: uppercase; }
+    .statusline { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 3px 8px; border: 1px solid var(--line);
+      border-radius: 999px; font-family: var(--mono); font-size: 10px;
+      color: var(--muted); white-space: nowrap;
+    }
+    .pill.live { color: var(--lime); border-color: rgba(200, 244, 90, 0.35); }
+    .pill.live::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+    .pill.dead { color: var(--red); border-color: rgba(255, 107, 94, 0.35); }
+    .goal {
+      color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap; min-width: 0;
+    }
+    .top .spacer { flex: 1; }
+
+    main {
+      display: grid;
+      grid-template-columns: minmax(0, 1.55fr) minmax(340px, 0.85fr);
+      gap: 18px;
+      padding: 18px 20px 22px;
+      height: calc(100dvh - 59px);
+      max-width: 1560px;
+      margin: 0 auto;
+    }
+    .board, .chat { min-height: 0; }
+    .board { display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
+    .board-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .board-head h1, .chat-head h2 {
+      margin: 0; font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em;
+      text-transform: uppercase; color: var(--muted); font-weight: 600;
+    }
+    .chips { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 3px 7px; border-radius: 5px; background: var(--panel-2);
+      border: 1px solid var(--line-soft); font-family: var(--mono); font-size: 10px;
+      color: var(--muted);
+    }
+    .chip b { color: var(--text); font-weight: 600; }
+    .chip.running b { color: var(--lime); }
+    .chip.queued b { color: var(--blue); }
+    .chip.blocked b { color: var(--amber); }
+    .chip.done b { color: var(--teal); }
+    .chip.failed b { color: var(--red); }
+
+    .live-strip {
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+      min-height: 31px; padding: 5px 8px;
+      border: 1px solid var(--line-soft); border-radius: 8px;
+      background: var(--panel);
+      font-family: var(--mono); font-size: 10px; color: var(--muted);
+    }
+    .live-strip .none { color: var(--dim); }
+    .live-strip .live-item {
+      display: inline-flex; gap: 5px; align-items: center;
+      max-width: 320px; padding: 2px 6px; border-radius: 5px;
+      background: rgba(200, 244, 90, 0.06);
+      border: 1px solid rgba(200, 244, 90, 0.18);
+      color: #c8d1c5; overflow: hidden;
+    }
+    .live-strip .live-item b {
+      color: var(--lime); font-weight: 600; overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap;
+    }
+    .live-strip .live-item.bad {
+      background: rgba(255, 107, 94, 0.07);
+      border-color: rgba(255, 107, 94, 0.2);
+      color: #ffb1a9;
+    }
+    .live-strip .live-item.warn {
+      background: rgba(255, 184, 77, 0.07);
+      border-color: rgba(255, 184, 77, 0.2);
+      color: var(--amber);
+    }
+
+    .btn {
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      color: var(--text);
+      border-radius: 7px;
+      padding: 6px 10px;
+      font-size: 12px;
+      transition: border-color .15s, background .15s, color .15s;
+    }
+    .btn:hover { border-color: #3a4147; background: #1a1e21; }
+    .btn.primary { background: var(--lime); color: #10130a; border-color: var(--lime); font-weight: 650; }
+    .btn.primary:hover { background: #d7ff75; }
+    .btn.ghost { background: transparent; }
+    .btn.danger { color: var(--red); border-color: rgba(255, 107, 94, 0.28); background: transparent; }
+    .btn.danger:hover { background: rgba(255, 107, 94, 0.08); }
+    .btn.small { padding: 4px 8px; font-size: 11px; }
+    .btn:disabled { opacity: .45; cursor: default; }
+
+    .add-form {
+      display: grid;
+      grid-template-columns: 1.1fr 1.6fr 90px 110px 110px auto;
+      gap: 8px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+    }
+    .add-form.hidden { display: none; }
+    .field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .field label { font-family: var(--mono); font-size: 9px; letter-spacing: .1em; color: var(--dim); text-transform: uppercase; }
+    .field input, .field select {
+      width: 100%; padding: 7px 8px; border-radius: 6px;
+      border: 1px solid var(--line); background: #0d0f10; color: var(--text);
+      font-size: 12px; outline: none;
+    }
+    .field input:focus, .field select:focus, .ask textarea:focus { border-color: rgba(200, 244, 90, 0.5); }
+    .add-form .submit { align-self: end; }
+    .contract-row {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: 1fr 2fr;
+      gap: 8px;
+      padding-top: 2px;
+      border-top: 1px dashed var(--line-soft);
+    }
+
+    .tasks {
+      display: flex; flex-direction: column; gap: 8px;
+      overflow: auto; padding-right: 4px; min-height: 0;
+    }
+    .task {
+      position: relative;
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--line);
+      border-radius: 9px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.012), transparent), var(--panel);
+      padding: 10px 12px 9px;
+    }
+    .task.running { border-left-color: var(--lime); }
+    .task.queued { border-left-color: var(--blue); }
+    .task.blocked { border-left-color: var(--amber); }
+    .task.done { border-left-color: var(--teal); }
+    .task.failed, .task.lost { border-left-color: var(--red); }
+    .task.cancelled { border-left-color: var(--dim); opacity: .72; }
+    .task-top { display: flex; align-items: center; gap: 9px; }
+    .task-top h3 {
+      margin: 0; font-size: 13px; font-weight: 600; flex: 1;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .badge {
+      padding: 2px 6px; border-radius: 4px; font-family: var(--mono);
+      font-size: 9px; letter-spacing: .06em; text-transform: uppercase;
+      border: 1px solid currentColor;
+    }
+    .badge.running { color: var(--lime); background: rgba(200,244,90,.06); }
+    .badge.queued { color: var(--blue); background: rgba(138,180,255,.06); }
+    .badge.blocked { color: var(--amber); background: rgba(255,184,77,.06); }
+    .badge.done { color: var(--teal); background: rgba(88,214,176,.06); }
+    .badge.failed, .badge.lost { color: var(--red); background: rgba(255,107,94,.06); }
+    .badge.cancelled { color: var(--dim); }
+    .prio { font-family: var(--mono); font-size: 10px; color: var(--dim); }
+    .brief {
+      margin: 6px 0 7px; color: #b9bfbc; font-size: 12px;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .meta {
+      display: flex; flex-wrap: wrap; gap: 4px 14px;
+      font-size: 10px; color: var(--dim);
+    }
+    .meta span { display: inline-flex; gap: 5px; align-items: baseline; }
+    .meta code { color: #9aa19e; font-size: 10px; }
+    .meta code.copy { cursor: pointer; border-bottom: 1px dotted #3a4147; }
+    .meta code.copy:hover { color: var(--lime); }
+    .outcome {
+      margin-top: 7px; padding: 6px 8px; border-radius: 6px;
+      background: #0d0f10; border: 1px solid var(--line-soft);
+      font-family: var(--mono); font-size: 10.5px; color: #a9b0ad;
+      white-space: pre-wrap; word-break: break-word;
+      max-height: 90px; overflow: auto;
+    }
+    .outcome.err { color: #ffb1a9; border-color: rgba(255,107,94,.2); }
+    .task .actions { display: flex; gap: 6px; margin-top: 7px; justify-content: flex-end; }
+
+    .chat {
+      display: flex; flex-direction: column;
+      border: 1px solid var(--line); border-radius: 12px;
+      background: var(--panel); overflow: hidden;
+    }
+    .chat-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 14px; border-bottom: 1px solid var(--line); gap: 10px;
+    }
+    .chat-head .mode { font-family: var(--mono); font-size: 9px; color: var(--dim); letter-spacing: .1em; }
+    .messages { flex: 1; overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+    .msg { display: flex; flex-direction: column; gap: 3px; max-width: 92%; }
+    .msg .role { font-family: var(--mono); font-size: 9px; letter-spacing: .1em; color: var(--dim); text-transform: uppercase; }
+    .msg .body {
+      padding: 8px 10px; border-radius: 8px; font-size: 12.5px;
+      white-space: pre-wrap; word-break: break-word;
+      border: 1px solid var(--line-soft); background: var(--panel-2);
+    }
+    .msg.user { align-self: flex-end; align-items: flex-end; }
+    .msg.user .body { background: rgba(200,244,90,.08); border-color: rgba(200,244,90,.22); }
+    .msg.leader .body { background: #0e1011; }
+    .msg.pending .body { color: var(--muted); font-style: italic; }
+    .empty { color: var(--dim); font-size: 12px; padding: 8px 2px; }
+
+    .quick { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 12px 8px; }
+    .quick button {
+      border: 1px solid var(--line-soft); background: transparent; color: var(--muted);
+      border-radius: 999px; padding: 3px 9px; font-size: 11px;
+    }
+    .quick button:hover { border-color: rgba(200,244,90,.35); color: var(--lime); }
+    .ask { display: flex; gap: 8px; padding: 10px 12px 12px; border-top: 1px solid var(--line); }
+    .ask textarea {
+      flex: 1; resize: none; min-height: 42px; max-height: 120px;
+      padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line);
+      background: #0d0f10; color: var(--text); font-size: 12.5px; outline: none;
+    }
+    .ask .btn { align-self: flex-end; height: 38px; }
+
+    .workers-panel {
+      border: 1px solid var(--line-soft); border-radius: 8px; background: var(--panel);
+    }
+    .workers-panel.hidden { display: none; }
+    .workers-panel summary {
+      cursor: pointer; padding: 7px 10px; font-family: var(--mono);
+      font-size: 10px; color: var(--dim); letter-spacing: .08em;
+    }
+    .workers-body { border-top: 1px solid var(--line-soft); }
+    .worker-row {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      padding: 7px 10px; border-top: 1px solid var(--line-soft);
+      font-family: var(--mono); font-size: 10px; color: var(--muted);
+    }
+    .worker-row:first-child { border-top: 0; }
+    .worker-row .grow { flex: 1; min-width: 160px; }
+    .worker-row strong { color: var(--text); font-weight: 600; }
+    .worker-row .warn { color: var(--amber); }
+    .worker-row .bad { color: var(--red); }
+    .worker-row .ok { color: var(--lime); }
+
+    details.statecard { border: 1px solid var(--line-soft); border-radius: 8px; background: var(--panel); }
+    details.statecard summary {
+      cursor: pointer; padding: 7px 10px; font-family: var(--mono);
+      font-size: 10px; color: var(--dim); letter-spacing: .08em;
+    }
+    details.statecard pre {
+      margin: 0; padding: 0 10px 10px; font-size: 10.5px; color: #9aa19e;
+      white-space: pre-wrap; max-height: 260px; overflow: auto;
+    }
+
+    .auth-gate {
+      position: fixed; inset: 0; z-index: 100;
+      display: grid; place-items: center; padding: 20px;
+      background:
+        radial-gradient(700px 420px at 50% -10%, rgba(200, 244, 90, 0.09), transparent 65%),
+        rgba(10, 11, 12, 0.94);
+      backdrop-filter: blur(10px);
+    }
+    .auth-gate.hidden { display: none; }
+    .auth-card {
+      width: min(430px, 100%);
+      display: flex; flex-direction: column; gap: 12px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+    }
+    .auth-card h1 {
+      margin: 0; font-family: var(--mono); font-size: 18px;
+      letter-spacing: .16em; font-weight: 650;
+    }
+    .auth-card p { margin: 0; color: var(--muted); font-size: 12px; }
+    .auth-card .field input { font-family: var(--mono); }
+    .auth-card .err { color: var(--red); min-height: 18px; }
+    .auth-card .hint { color: var(--dim); font-size: 11px; }
+
+    @media (max-width: 980px) {
+      main { grid-template-columns: 1fr; height: auto; }
+      .board, .chat { min-height: 0; }
+      .chat { min-height: 520px; }
+      .add-form { grid-template-columns: 1fr 1fr; }
+      .add-form .submit { grid-column: span 2; }
+      .goal { display: none; }
+    }
+    @media (max-width: 560px) {
+      .top { padding: 10px 12px; gap: 10px; }
+      main { padding: 12px; gap: 12px; }
+      .add-form { grid-template-columns: 1fr; }
+      .add-form .submit { grid-column: auto; }
+      .contract-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="auth-gate hidden" id="auth-gate">
+    <form class="auth-card" id="auth-form">
+      <h1>FOREMAN</h1>
+      <p>这个控制面需要访问令牌。令牌只保存在当前设备。</p>
+      <div class="field">
+        <label for="auth-token">Access token</label>
+        <input id="auth-token" type="password" autocomplete="current-password" placeholder="粘贴 access-token 文件内容" required />
+      </div>
+      <button class="btn primary" type="submit">进入</button>
+      <p class="err" id="auth-error"></p>
+      <p class="hint">首次远程访问可在控制机读取 <code>.foreman/access-token</code>。也可以在 URL 后加 <code>#token=&lt;token&gt;</code> 自动填入。</p>
+    </form>
+  </div>
+
+  <header class="top">
+    <div class="brand">
+      <span class="mark"></span>
+      <strong>FOREMAN</strong>
+      <span class="sub">agent ops</span>
+    </div>
+    <div class="statusline">
+      <span id="conn" class="pill live">live</span>
+      <span id="mode" class="pill">rule</span>
+      <span id="workers" class="pill">workers 0</span>
+      <span id="uptime" class="mono" style="font-size:10px;color:var(--dim)"></span>
+      <span id="goal" class="goal"></span>
+    </div>
+  </header>
+
+  <main>
+    <section class="board">
+      <div class="board-head">
+        <h1>任务板</h1>
+        <div class="chips" id="counts"></div>
+        <button class="btn" id="toggle-add">+ 新任务</button>
+      </div>
+
+      <div class="live-strip" id="live-strip"></div>
+
+      <form class="add-form hidden" id="add-form">
+        <div class="field">
+          <label for="t-title">标题</label>
+          <input id="t-title" required placeholder="修掉登录页的 flaky test" />
+        </div>
+        <div class="field">
+          <label for="t-brief">任务说明</label>
+          <input id="t-brief" placeholder="定位并修复，写清根因，跑完测试" />
+        </div>
+        <div class="field">
+          <label for="t-priority">优先级</label>
+          <input id="t-priority" type="number" min="0" max="100" value="50" />
+        </div>
+        <div class="field">
+          <label for="t-adapter">执行器</label>
+          <select id="t-adapter">
+            <option value="">项目默认</option>
+            <option value="mock">mock</option>
+            <option value="t3">t3</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="t-project">项目</label>
+          <input id="t-project" list="project-options" placeholder="项目名或路径；默认 default" />
+          <datalist id="project-options"></datalist>
+        </div>
+        <div class="submit">
+          <button class="btn primary" type="submit">添加</button>
+        </div>
+        <div class="contract-row">
+          <div class="field">
+            <label for="t-token">完成 token（可选）</label>
+            <input id="t-token" placeholder="DONE；必须单独成行" />
+          </div>
+          <div class="field">
+            <label for="t-artifact">产物路径（可选）</label>
+            <input id="t-artifact" placeholder="例如 E2E_OK.md；相对项目目录" />
+          </div>
+        </div>
+      </form>
+
+      <div class="tasks" id="tasks"></div>
+
+      <details class="workers-panel hidden" id="workers-panel">
+        <summary>Workers <span id="workers-summary"></span></summary>
+        <div id="workers-body" class="workers-body"></div>
+      </details>
+
+      <details class="statecard">
+        <summary>权威状态卡（leader 实际看到的原文）</summary>
+        <pre id="state-card"></pre>
+      </details>
+    </section>
+
+    <aside class="chat">
+      <div class="chat-head">
+        <h2>和 Foreman 说话</h2>
+        <span class="mode" id="leader-mode">rule</span>
+      </div>
+      <div class="messages" id="messages"></div>
+      <div class="quick" id="quick">
+        <button type="button">现在什么情况？</button>
+        <button type="button">还有多少活？</button>
+        <button type="button">谁在干什么？</button>
+      </div>
+      <form class="ask" id="ask-form">
+        <textarea id="ask-input" rows="2" placeholder="问它：还有几个在跑？卡在哪？"></textarea>
+        <button class="btn primary" type="submit">发送</button>
+      </form>
+    </aside>
+  </main>
+
+  <script>
+    const TOKEN_KEY = "foreman.token";
+    const state = {
+      data: null,
+      lastChatId: 0,
+      leaveScroll: false,
+      sending: false,
+      online: true,
+      etag: null,
+      authRequired: false,
+    };
+
+    const $ = (id) => document.getElementById(id);
+
+    function getToken() {
+      try { return localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; }
+    }
+
+    function setToken(token) {
+      try {
+        if (token) localStorage.setItem(TOKEN_KEY, token);
+        else localStorage.removeItem(TOKEN_KEY);
+      } catch {}
+    }
+
+    (function bootstrapToken() {
+      if (!location.hash.startsWith("#token=")) return;
+      const token = decodeURIComponent(location.hash.slice("#token=".length));
+      if (!token) return;
+      setToken(token);
+      history.replaceState(null, "", `${location.pathname}${location.search}`);
+    })();
+
+    function showGate(message = "") {
+      state.authRequired = true;
+      const gate = $("auth-gate");
+      const first = gate.classList.contains("hidden");
+      gate.classList.remove("hidden");
+      if (first || message) $("auth-error").textContent = message;
+      if (first) setTimeout(() => $("auth-token").focus(), 20);
+    }
+
+    function hideGate() {
+      $("auth-gate").classList.add("hidden");
+      $("auth-error").textContent = "";
+    }
+
+    function authHeaders(headers = {}) {
+      const token = getToken();
+      return token ? { ...headers, authorization: `Bearer ${token}` } : headers;
+    }
+
+    async function apiFetch(url, options = {}) {
+      return fetch(url, { ...options, headers: authHeaders(options.headers || {}) });
+    }
+    const el = (tag, props = {}, ...children) => {
+      const node = document.createElement(tag);
+      for (const [key, value] of Object.entries(props)) {
+        if (key === "class") node.className = value;
+        else if (key === "text") node.textContent = value;
+        else if (key === "html") node.innerHTML = value;
+        else if (key.startsWith("on")) node.addEventListener(key.slice(2).toLowerCase(), value);
+        else if (value !== null && value !== undefined) node.setAttribute(key, value);
+      }
+      for (const child of children.flat()) {
+        if (child === null || child === undefined) continue;
+        node.append(child.nodeType ? child : document.createTextNode(String(child)));
+      }
+      return node;
+    };
+
+    function statusOrder(task) {
+      return { running: 0, blocked: 1, queued: 2, failed: 3, lost: 3, done: 4, cancelled: 5 }[task.status] ?? 9;
+    }
+
+    function renderLive(tasks, counts) {
+      const box = $("live-strip");
+      const running = tasks.filter((task) => task.status === "running");
+      const blocked = tasks.filter((task) => task.status === "blocked");
+      const parts = [];
+      if (!running.length) {
+        parts.push(el("span", { class: "none", text: "当前没有运行中的 thread" }));
+      }
+      for (const task of running.slice(0, 6)) {
+        parts.push(el("span", {
+          class: "live-item",
+          title: `${task.thread_id || "-"} · ${task.projectShort || "-"}`,
+        }, el("b", { text: task.title }), el("span", { text: task.elapsed })));
+      }
+      if (running.length > 6) {
+        parts.push(el("span", { class: "none", text: `+${running.length - 6} running` }));
+      }
+      if (counts.queued) {
+        parts.push(el("span", { class: "none", text: `排队 ${counts.queued}` }));
+      }
+      if (blocked.length) {
+        parts.push(el("span", { class: "live-item warn", text: `等人处理 ${blocked.length}` }));
+      }
+      if (counts.failed) {
+        parts.push(el("span", { class: "live-item bad", text: `失败 ${counts.failed}` }));
+      }
+      box.replaceChildren(...parts);
+    }
+
+    function renderCounts(counts) {
+      const order = [
+        ["running", "在跑"],
+        ["queued", "排队"],
+        ["blocked", "等人"],
+        ["done", "完成"],
+        ["failed", "失败"],
+        ["lost", "失联"],
+      ];
+      const box = $("counts");
+      box.replaceChildren();
+      for (const [key, label] of order) {
+        if (!counts[key] && key !== "running" && key !== "queued") continue;
+        box.append(el("span", { class: `chip ${key}` }, label, el("b", { text: String(counts[key] || 0) })));
+      }
+      box.append(el("span", { class: "chip" }, "总计", el("b", { text: String(counts.total || 0) })));
+    }
+
+    function metaItem(label, value, copy = false) {
+      const code = el("code", { text: value ?? "-" });
+      if (copy && value) {
+        code.className = "copy";
+        code.title = "点击复制";
+        code.addEventListener("click", async () => {
+          try { await navigator.clipboard.writeText(value); code.textContent = "copied"; setTimeout(() => (code.textContent = value), 900); } catch {}
+        });
+      }
+      return el("span", {}, label, code);
+    }
+
+    async function taskAction(task, action) {
+      try {
+        const response = await apiFetch(`/api/tasks/${encodeURIComponent(task.id)}/${action}`, { method: "POST" });
+        if (response.status === 401) { showGate("令牌无效或已失效"); return; }
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      } catch (error) {
+        alert(error.message);
+      }
+      refresh();
+    }
+
+    function taskCard(task) {
+      const card = el("article", { class: `task ${task.status}` });
+      const top = el("div", { class: "task-top" },
+        el("span", { class: `badge ${task.status}`, text: task.statusLabel }),
+        el("h3", { text: task.title }),
+        el("span", { class: "prio", text: `P${task.priority}` }),
+      );
+      card.append(top);
+      card.append(el("p", { class: "brief", text: task.brief }));
+
+      const metaChildren = [
+        metaItem("id", task.id),
+        metaItem("exec", task.adapter),
+        metaItem("project", task.projectName ? `${task.projectName} · ${task.projectShort}` : task.projectShort),
+        task.thread_link
+          ? el("span", {}, "thread ", el("a", { href: task.thread_link, target: "_blank", rel: "noreferrer", text: "打开线程" }))
+          : metaItem("thread", task.thread_id, true),
+        ...(task.worker_id ? [metaItem("worker", task.worker_id, true)] : []),
+        metaItem("attempt", `${task.attempts}/${task.max_attempts}`),
+        metaItem("elapsed", task.elapsed),
+      ];
+      if (task.status === "running" || task.status === "blocked") {
+        metaChildren.push(metaItem("heartbeat", task.heartbeatAge || "-"));
+      }
+      if (task.contractLabel) {
+        metaChildren.push(metaItem("contract", task.contractLabel));
+      }
+      const meta = el("div", { class: "meta" }, ...metaChildren);
+      card.append(meta);
+
+      if (task.result || task.error) {
+        const isErr = task.status === "failed" || task.status === "lost" || task.status === "blocked";
+        card.append(el("div", { class: `outcome${isErr ? " err" : ""}`, text: task.error || task.result }));
+      }
+
+      const actions = el("div", { class: "actions" });
+      if (task.status === "blocked") {
+        actions.append(el("button", {
+          class: "btn small",
+          type: "button",
+          onClick: async () => {
+            await taskAction(task, "resume");
+          },
+        }, "恢复"));
+      }
+      if (["queued", "running", "blocked"].includes(task.status)) {
+        actions.append(el("button", {
+          class: "btn small danger",
+          type: "button",
+          onClick: async () => {
+            if (!confirm(`取消任务「${task.title}」？`)) return;
+            await taskAction(task, "cancel");
+          },
+        }, "取消"));
+      }
+      if (["failed", "lost", "cancelled"].includes(task.status)) {
+        actions.append(el("button", {
+          class: "btn small",
+          type: "button",
+          onClick: async () => {
+            await taskAction(task, "retry");
+          },
+        }, "重试"));
+      }
+      if (actions.childNodes.length) card.append(actions);
+      return card;
+    }
+
+    function renderTasks(tasks) {
+      const box = $("tasks");
+      const sorted = [...tasks].sort((a, b) => statusOrder(a) - statusOrder(b) || b.priority - a.priority);
+      box.replaceChildren();
+      if (!sorted.length) {
+        box.append(el("div", { class: "empty", text: "还没有任务。点右上角「+ 新任务」，或者直接问 Foreman。" }));
+        return;
+      }
+      for (const task of sorted) box.append(taskCard(task));
+    }
+
+    function renderChat(chat) {
+      const box = $("messages");
+      const latest = chat.length ? chat[chat.length - 1].id : 0;
+      if (latest === state.lastChatId && !state.sending) return;
+      const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+      box.replaceChildren();
+      if (!chat.length) {
+        box.append(el("div", { class: "empty", text: "问一句「现在什么情况」，它会按数据库里的状态回答，不靠记忆。" }));
+      }
+      for (const message of chat) {
+        box.append(el("div", { class: `msg ${message.role}` },
+          el("span", { class: "role", text: message.role === "user" ? "you" : "foreman" }),
+          el("div", { class: "body", text: message.content }),
+        ));
+      }
+      if (state.sending) {
+        box.append(el("div", { class: "msg leader pending" },
+          el("span", { class: "role", text: "foreman" }),
+          el("div", { class: "body", text: "……" }),
+        ));
+      }
+      state.lastChatId = latest;
+      if (nearBottom) box.scrollTop = box.scrollHeight;
+    }
+
+    async function workerAction(id, action) {
+      if (action === "revoke" && !confirm(`撤销 worker ${id} 的 token？`)) return;
+      try {
+        const response = await apiFetch(
+          `/api/workers/${encodeURIComponent(id)}/${action}`,
+          { method: "POST" },
+        );
+        if (response.status === 401) { showGate("令牌无效或已失效"); return; }
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      } catch (error) {
+        alert(error.message);
+      }
+      refresh({ force: true });
+    }
+
+    function renderWorkers(workers) {
+      const panel = $("workers-panel");
+      const body = $("workers-body");
+      if (!workers.length) {
+        panel.classList.add("hidden");
+        body.replaceChildren();
+        return;
+      }
+      panel.classList.remove("hidden");
+      const online = workers.filter((worker) => worker.online).length;
+      $("workers-summary").textContent = `${online}/${workers.length} online`;
+      body.replaceChildren(
+        ...workers.map((worker) => {
+          const age = worker.last_heartbeat_at
+            ? `${Math.max(0, Math.floor((Date.now() - worker.last_heartbeat_at) / 1000))}s ago`
+            : "-";
+          const statusClass =
+            worker.status === "online" ? "ok" : worker.status === "draining" ? "warn" : "bad";
+          const actions = el("span", {});
+          if (worker.status === "online") {
+            actions.append(el("button", {
+              class: "btn small",
+              type: "button",
+              onClick: () => workerAction(worker.id, "drain"),
+            }, "drain"));
+          }
+          if (worker.status === "draining" || worker.status === "offline") {
+            actions.append(el("button", {
+              class: "btn small",
+              type: "button",
+              onClick: () => workerAction(worker.id, "resume"),
+            }, "resume"));
+          }
+          actions.append(el("button", {
+            class: "btn small danger",
+            type: "button",
+            onClick: () => workerAction(worker.id, "revoke"),
+          }, "revoke"));
+          return el("div", { class: "worker-row" },
+            el("strong", { text: worker.id }),
+            el("span", { class: statusClass, text: worker.status }),
+            el("span", { text: `${worker.running}/${worker.capacity}` }),
+            el("span", { class: "grow", text: `projects=${(worker.projects || []).join(",") || "all"}` }),
+            el("span", { text: `protocol=${worker.protocol_version ?? "-"}` }),
+            el("span", { text: `heartbeat=${age}` }),
+            el("span", { text: `token=${worker.tokenHint || "-"}` }),
+            actions,
+          );
+        }),
+      );
+    }
+
+    function render(data) {
+      state.data = data;
+      const options = $("project-options");
+      options.replaceChildren(
+        ...(data.projects || []).map((project) =>
+          el("option", {
+            value: project.name,
+            label: `${project.path}${project.adapter ? ` · ${project.adapter}` : ""}`,
+          }),
+        ),
+      );
+      renderCounts(data.counts);
+      renderLive(data.tasks, data.counts);
+      renderTasks(data.tasks);
+      renderWorkers(data.workers || []);
+      renderChat(data.chat);
+      document.title = `Foreman · ${data.counts.running} 跑 / ${data.counts.queued} 排 / ${data.counts.blocked} 等人`;
+      $("goal").textContent = data.goal;
+      $("mode").textContent = `leader: ${data.leader.mode}${data.leader.model ? " / " + data.leader.model : ""}`;
+      const workers = data.workers || [];
+      const onlineWorkers = workers.filter((worker) => worker.online).length;
+      $("workers").textContent = `workers ${onlineWorkers}/${workers.length}`;
+      $("workers").className = `pill ${onlineWorkers ? "live" : workers.length ? "dead" : ""}`;
+      $("leader-mode").textContent = data.leader.mode.toUpperCase();
+      $("state-card").textContent = data.stateCard;
+      const uptime = data.daemon ? Math.floor(data.daemon.uptimeMs / 1000) : 0;
+      $("uptime").textContent = data.daemon ? `up ${Math.floor(uptime / 60)}m${String(uptime % 60).padStart(2, "0")}s · tick #${data.daemon.ticks}` : "";
+      state.authRequired = Boolean(data.auth?.required);
+      hideGate();
+      setOnline(true);
+    }
+
+    function setOnline(online) {
+      if (state.online === online) return;
+      state.online = online;
+      const pill = $("conn");
+      pill.className = `pill ${online ? "live" : "dead"}`;
+      pill.textContent = online ? "live" : "disconnected";
+    }
+
+    async function refresh({ force = false } = {}) {
+      try {
+        const headers = !force && state.etag ? { "if-none-match": state.etag } : {};
+        const response = await apiFetch("/api/state", { cache: "no-store", headers });
+        if (response.status === 401) {
+          setOnline(false);
+          showGate();
+          return false;
+        }
+        if (response.status === 304) {
+          setOnline(true);
+          return true;
+        }
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        state.etag = response.headers.get("etag");
+        render(await response.json());
+        return true;
+      } catch {
+        setOnline(false);
+        return false;
+      }
+    }
+
+    async function ask(message) {
+      if (!message.trim() || state.sending) return;
+      state.sending = true;
+      $("ask-input").value = "";
+      const box = $("messages");
+      box.append(el("div", { class: "msg user" },
+        el("span", { class: "role", text: "you" }),
+        el("div", { class: "body", text: message }),
+      ));
+      box.append(el("div", { class: "msg leader pending" },
+        el("span", { class: "role", text: "foreman" }),
+        el("div", { class: "body", text: "……" }),
+      ));
+      box.scrollTop = box.scrollHeight;
+      try {
+        const response = await apiFetch("/api/ask", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ message }),
+        });
+        if (response.status === 401) { showGate("令牌无效或已失效"); return; }
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        await refresh();
+      } catch (error) {
+        box.append(el("div", { class: "msg leader" },
+          el("span", { class: "role", text: "foreman" }),
+          el("div", { class: "body", text: `请求失败：${error.message}` }),
+        ));
+      } finally {
+        state.sending = false;
+        state.lastChatId = 0;
+        await refresh({ force: true });
+      }
+    }
+
+    $("toggle-add").addEventListener("click", () => {
+      $("add-form").classList.toggle("hidden");
+      if (!$("add-form").classList.contains("hidden")) $("t-title").focus();
+    });
+
+    $("add-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const payload = {
+        title: $("t-title").value.trim(),
+        brief: $("t-brief").value.trim() || $("t-title").value.trim(),
+        priority: Number($("t-priority").value) || 50,
+      };
+      const adapter = $("t-adapter").value;
+      if (adapter) payload.adapter = adapter;
+      const projectValue = $("t-project").value.trim();
+      if (projectValue) {
+        const match = (state.data?.projects || []).find(
+          (project) => project.name === projectValue || project.id === projectValue,
+        );
+        if (match) payload.project = match.id;
+        else payload.projectPath = projectValue;
+      }
+      const token = $("t-token").value.trim();
+      const artifact = $("t-artifact").value.trim();
+      if (token) payload.completionToken = token;
+      if (artifact) payload.artifactPath = artifact;
+      const response = await apiFetch("/api/tasks", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (response.status === 401) { showGate("令牌无效或已失效"); return; }
+      const data = await response.json();
+      if (!response.ok) {
+        alert(data.error || "添加失败");
+        return;
+      }
+      $("t-title").value = "";
+      $("t-brief").value = "";
+      $("t-token").value = "";
+      $("t-artifact").value = "";
+      $("add-form").classList.add("hidden");
+      refresh();
+    });
+
+    $("ask-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      ask($("ask-input").value);
+    });
+
+    $("ask-input").addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        ask($("ask-input").value);
+      }
+    });
+
+    $("quick").addEventListener("click", (event) => {
+      const text = event.target.closest("button")?.textContent;
+      if (text) ask(text);
+    });
+
+    $("auth-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const token = $("auth-token").value.trim();
+      if (!token) return;
+      setToken(token);
+      state.etag = null;
+      const ok = await refresh();
+      if (ok) {
+        hideGate();
+        $("auth-token").value = "";
+      } else {
+        setToken("");
+        showGate("令牌无效，请检查 access-token 文件");
+      }
+    });
+
+    let refreshTimer = null;
+    function scheduleRefresh() {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      const delay = document.hidden ? 10000 : 3000;
+      refreshTimer = setTimeout(async () => {
+        await refresh();
+        scheduleRefresh();
+      }, delay);
+    }
+
+    document.addEventListener("visibilitychange", () => {
+      scheduleRefresh();
+      if (!document.hidden) refresh();
+    });
+
+    refresh().finally(scheduleRefresh);
+  </script>
+</body>
+</html>
