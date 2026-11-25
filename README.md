@@ -289,10 +289,10 @@ leader chooses a tier:
 
 | Tier | Typical work | Default |
 | --- | --- | --- |
-| `fast` | copy, formatting, one-file edits | fast model, effort `none` |
-| `standard` | ordinary implementation and cleanup | fast model, effort `auto` |
-| `deep` | research, analysis, architecture, audits | strong model, effort `max` |
-| `coding` | fixes, refactors, migrations | coding model, effort `max` |
+| `fast` / light | copy, formatting, one-file edits | fast model, effort `none` |
+| `standard` | simple lookup, data retrieval, weather/prices, ordinary cleanup | fast model, effort `auto` |
+| `deep` | research synthesis, analysis, architecture, audits | strong model, effort `max` |
+| `coding` | actual code edits: fixes, refactors, migrations, implementation | coding model, effort `max` |
 
 ```bash
 foreman add "Audit the payment callback" \
