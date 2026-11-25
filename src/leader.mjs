@@ -257,7 +257,7 @@ export class Leader {
       "",
       "actions 可选类型：",
       '- {"type":"add_task","title":"...","brief":"...","priority":50,"project":"项目名","projectPath":"可选路径","category":"可选 light|standard|deep|coding","provider":"可选 T3 provider id","model":"可选模型 slug","effort":"auto|none|high|max","modelOverride":false,"completionToken":"DONE","artifactPath":"可选","artifactContains":"可选","requireDiff":false}',
-      '- {"type":"set_model_routes","routes":{"deep":{"provider":"dima","model":"deepseek-v4.1-flash","effort":"max"},"coding":{"provider":"dim","model":"dimcode-api-oauth/claude-opus-5-5","effort":"max"}},"reset":false}',
+      '- {"type":"set_model_routes","routes":{"deep":{"provider":"dima","model":"deepseek-v4.1-flash","effort":"max"},"coding":{"provider":"claudeAgent","model":"claude-opus-5-5","effort":"max"}},"reset":false}',
       '- {"type":"set_model_routes","all":{"provider":"dima","model":"deepseek-v4.1-flash","effort":"max"}}',
       '- {"type":"reprioritize","taskId":"tsk_...","priority":80}',
       '- {"type":"cancel","taskId":"tsk_..."}',

@@ -21,7 +21,8 @@ CLI equivalent:
 ```bash
 node src/cli.mjs add "fix flaky login test" \
   --brief "reproduce, fix, add regression test" \
-  --model dimcode-api-oauth/claude-opus-5-5 \
+  --provider claudeAgent \
+  --model claude-opus-5-5 \
   --effort high \
   --require-diff
 ```
