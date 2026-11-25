@@ -8,7 +8,7 @@
 [![npm](https://img.shields.io/npm/v/foreman-ops.svg)](https://www.npmjs.com/package/foreman-ops)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.5-339933.svg)](package.json)
-[![Status: alpha](https://img.shields.io/badge/status-alpha-orange.svg)](#status)
+[![Status: 1.0](https://img.shields.io/badge/status-1.0-2f6b4f.svg)](#status)
 
 You talk to one leader. The leader keeps a task ledger, a daemon leases work to
 worker threads, and every completion wakes the leader with a state card built
@@ -310,10 +310,11 @@ See [SECURITY.md](SECURITY.md) and [docs/security.md](docs/security.md).
 
 ## Status
 
-Foreman is **alpha**. The ledger, leases, retries, completion contracts, mock
-adapter, T3 adapter, dashboard, worker mode, and native lineage path are
-implemented and covered by the test suite (`npm test`). The real T3 + DimAgent
-path has been exercised end-to-end on the maintainer's machine.
+Foreman is **1.0**. The ledger, leases, retries, completion contracts, mock
+adapter, T3 adapter, dashboard, worker mode, native lineage path, schema
+migrations, and macOS CI are implemented and covered by the test suite
+(`npm test`). The real T3 + DimAgent path has been exercised end-to-end on the
+maintainer's machine.
 
 Known limits and the roadmap are tracked in
 [docs/README.md](docs/README.md#status-and-limits) and
@@ -324,6 +325,7 @@ Known limits and the roadmap are tracked in
 - worker transport is HTTP; bring your own TLS
 - no budget enforcement yet
 - T3 completion is polled each tick; MCP events/webhooks are next
+- the T3 model catalog is explicit config, not auto-discovered
 - master notifications are user-role messages in T3, not OS notifications
 
 ## Contributing

@@ -28,10 +28,10 @@ worker model.
 
 ## Status and limits
 
-Foreman is alpha. The ledger, leases, retries, completion contracts, mock and
-T3 adapters, dashboard, workers, and native lineage are implemented and covered
-by `npm test`. The supported real path is T3 Code + a T3 ACP provider; DimAgent
-is the reference provider.
+Foreman is 1.0. The ledger, leases, retries, completion contracts, mock and
+T3 adapters, dashboard, workers, native lineage, schema migrations, and macOS
+CI are implemented and covered by `npm test`. The supported real path is T3 Code
++ a T3 ACP provider; DimAgent is the reference provider.
 
 Known limits:
 
@@ -41,6 +41,7 @@ Known limits:
 - T3 completion is polled each tick; MCP events/webhooks are future work
 - master notifications are T3 user-role messages, not OS notifications
 - one bound master thread; multi-project master routing is on the roadmap
+- the T3 provider/model catalog is explicit config, not auto-discovered
 
 ## The mental model
 

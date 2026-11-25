@@ -133,7 +133,7 @@ Foreman is not:
 - a promise that a worker solved the semantic problem correctly; contracts are
   evidence, not proof
 
-## Tradeoffs we accept for alpha
+## Tradeoffs we accept for 1.x
 
 - **Single SQLite writer.** Simple, debuggable, and sufficient for one control
   plane. HA and multi-control-plane coordination are out of scope for now.

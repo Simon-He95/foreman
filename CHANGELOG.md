@@ -4,6 +4,29 @@ All notable changes to Foreman are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.0] - 2026-11-25
+
+### Added
+
+- Design rationale (`DESIGN.md`), command reference (`docs/commands.md`), and
+  a macOS CI job.
+- `foreman models` for the effective model catalog.
+- SQLite schema versioning and additive migrations (`PRAGMA user_version`).
+- One-command release flow with bumpp and npm publishing.
+
+### Changed
+
+- Read-only research lookups use the fast model; only actual code edits use the
+  coding/Opus tier.
+- README/Quickstart now lead with npm installation and the T3 dependency matrix.
+
+### Known limits
+
+- T3 completion is still polled; MCP events/webhooks are future work.
+- The T3 provider/model catalog is explicit config, not auto-discovered.
+- One control plane per SQLite ledger; no HA.
+- Worker transport is HTTP; TLS is external.
+
 ## [0.1.3] - 2026-11-25
 
 ### Added
