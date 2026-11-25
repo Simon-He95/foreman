@@ -709,7 +709,7 @@ export class Leader {
       } catch (error) {
         fallback = true;
         this.logger.error(
-          `[leader] ${this.config.leaderMode} turn failed: ${error.message}`,
+          `[leader] ${leaderConfig.leaderMode}${leaderConfig.leaderProvider ? ` (${leaderConfig.leaderProvider})` : ""} turn failed: ${error.message}`,
         );
         result = {
           reply: `（leader 调用失败，先给你规则汇报）\n${ruleReply(this.db, this.config)}\n\n错误：${oneLine(error.message, 300)}`,
