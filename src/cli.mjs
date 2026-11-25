@@ -374,24 +374,24 @@ async function commandInit(flags) {
           throw new Error("T3 provider registration failed; run npm run t3:register-foreman");
         }
       } else {
-        console.log("  next      npm run t3:register-foreman, then restart T3");
+        console.log("  next      re-run with --register (source checkout: npm run t3:register-foreman), then restart T3");
       }
     }
     if (mode === "mock") {
       console.log("");
       console.log("Trial mode needs no model. Run:");
-      console.log("  node src/cli.mjs demo --duration 20");
-      console.log("  npm start");
+      console.log("  foreman demo --duration 20");
+      console.log("  foreman up");
     }
     console.log("");
     console.log("Next:");
-    console.log("  1. node src/cli.mjs doctor");
-    console.log("  2. npm start");
+    console.log("  1. foreman doctor");
+    console.log("  2. foreman up");
     if (mode === "t3") {
-      console.log('  3. node src/cli.mjs master create --title "Foreman 主控"');
+      console.log('  3. foreman master create --title "Foreman"');
       console.log("  4. open the printed T3 thread and ask for a task");
     } else {
-      console.log("  3. node src/cli.mjs add \"hello\" --brief \"reply OK\" --adapter mock");
+      console.log('  3. foreman add "hello" --brief "reply OK" --adapter mock');
     }
   } finally {
     rl?.close();
