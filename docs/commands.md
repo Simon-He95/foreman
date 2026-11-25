@@ -117,4 +117,6 @@ npm run release:dry
 ```
 
 `release` uses bumpp for the version prompt, publishes to npm, verifies the
-registry, and commits/tags/pushes. It still requires one npm 2FA OTP.
+registry, and commits/tags/pushes. By default npm uses its browser/security-key
+2FA flow (`--auth web`). For a non-interactive or authenticator fallback, pass
+`--auth otp --otp <code>` or set `NPM_OTP`.

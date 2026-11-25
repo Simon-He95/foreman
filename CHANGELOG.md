@@ -47,6 +47,10 @@ All notable changes to Foreman are documented here. The format follows
 
 ### Fixed
 
+- The release script now uses npm's browser/security-key 2FA flow by default.
+  OTP is an explicit fallback (`--auth otp` / `--otp` / `NPM_OTP`) instead of
+  the default stdin prompt; staged releases are discovered through
+  `npm stage list` and approved with the same auth mode.
 - Provider and model are kept together when routing work. A bare model slug is
   resolved against the current master or a route instead of silently falling
   back to an unrelated provider.

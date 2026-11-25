@@ -6,8 +6,8 @@
  *   1. checks git/npm preconditions
  *   2. runs the test suite
  *   3. bumps package.json + package-lock.json
- *   4. publishes directly with a single 2FA OTP (or stages + approves if npm
- *      returns a staged release id)
+ *   4. publishes through npm's web/security-key 2FA flow by default (or
+ *      explicit OTP / staged approval)
  *   5. verifies the registry version
  *   6. commits and tags the release
  *
@@ -18,10 +18,11 @@
  *   npm run release -- --release 0.2.0
  *   npm run release -- --dry-run
  *   npm run release -- --no-git
+ *   npm run release -- --auth otp   # explicit OTP mode
  *   npm run release -- --otp 123456
  *
- * 2FA is still required by npm. The script prompts once; it cannot and should
- * not bypass your account's 2FA.
+ * 2FA is still required by npm. The default web mode lets npm open its
+ * browser/security-key flow. This script does not bypass account 2FA.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -123,7 +124,8 @@ Options:
   --dry-run       test and pack, do not bump or publish
   --skip-tests    skip the local test run
   --no-git        publish without commit/tag/push
-  --otp CODE      npm 2FA code (otherwise prompt once)
+  --auth MODE     2FA mode: web (default) or otp
+  --otp CODE      npm OTP; implies --auth otp (non-interactive/fallback)
   --tag NAME      npm dist-tag (default: latest)
   --registry URL  npm registry (default: https://registry.npmjs.org/)
 
@@ -195,7 +197,27 @@ const nextVersion = JSON.parse(
 if (nextVersion === current) fail("bumpp did not change the version");
 console.log(`\nrelease: version ${current} -> ${nextVersion}`);
 
-const otp = await promptOtp();
+const explicitOtp = value("--otp") || process.env.NPM_OTP || null;
+const authMode = value("--auth") || (explicitOtp ? "otp" : "web");
+if (!["web", "otp"].includes(authMode)) {
+  fail(`unknown --auth mode "${authMode}"; use web or otp`);
+}
+if (authMode === "web" && value("--otp")) {
+  fail("--otp is only valid with --auth otp; omit it to use web authentication");
+}
+const otp =
+  authMode === "otp"
+    ? explicitOtp || (await promptOtp())
+    : null;
+if (authMode === "web" && (!process.stdin.isTTY || !process.stdout.isTTY)) {
+  fail(
+    "web 2FA requires an interactive terminal. Use --auth otp --otp <code> or set NPM_OTP for non-interactive use.",
+  );
+}
+console.log(
+  `\nrelease: npm authentication=${authMode}${otp ? " (OTP supplied)" : " (browser/security key)"}`,
+);
+
 const publishArgs = [
   "publish",
   "--access",
@@ -207,24 +229,53 @@ const publishArgs = [
 ];
 if (otp) publishArgs.push("--otp", otp);
 
+// Must inherit stdio: npm's otplease/webAuthOpener only opens the browser
+// when stdin and stdout are TTYs. We cannot pipe the output if we want web 2FA.
 const published = run("npm", publishArgs, {
-  capture: true,
+  capture: false,
   allowFail: true,
 });
-const output = `${published.stdout || ""}${published.stderr || ""}`;
-process.stdout.write(published.stdout || "");
-process.stderr.write(published.stderr || "");
+if (published.status !== 0) {
+  fail(`npm publish failed (exit ${published.status}); version is still ${nextVersion}`);
+}
 
-const stageId = output.match(/staged with id\s+([0-9a-f-]+)/i)?.[1];
+// npm may stage the package instead of publishing immediately. Since publish
+// output is inherited, discover the staged version through the registry API.
+async function findStagedVersion(packageName, version) {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const result = run(
+      "npm",
+      ["stage", "list", "--json", "--registry", REGISTRY],
+      { capture: true, allowFail: true },
+    );
+    if (result.status === 0) {
+      try {
+        const rows = JSON.parse(String(result.stdout || "[]"));
+        const row = (Array.isArray(rows) ? rows : [])
+          .filter(
+            (item) =>
+              item &&
+              item.packageName === packageName &&
+              item.version === version &&
+              item.status === "staged",
+          )
+          .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0];
+        if (row?.id) return row.id;
+      } catch {
+        // retry; npm may print a warning before JSON
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  return null;
+}
+
+const stageId = await findStagedVersion(name, nextVersion);
 if (stageId) {
   console.log(`\nrelease: npm staged the package (${stageId}); approving it now...`);
-  run(
-    "npm",
-    ["stage", "approve", stageId, "--otp", otp, "--registry", REGISTRY],
-    { capture: false, allowFail: false, redact: true },
-  );
-} else if (published.status !== 0) {
-  fail(`npm publish failed (exit ${published.status}); version is still ${nextVersion}`);
+  const approveArgs = ["stage", "approve", stageId, "--registry", REGISTRY];
+  if (otp) approveArgs.push("--otp", otp);
+  run("npm", approveArgs, { capture: false, allowFail: false, redact: true });
 }
 
 let liveVersion = registryVersion(name);

@@ -25,9 +25,27 @@ npm run release
 
 `bumpp` asks whether this is patch / minor / major / custom. The script then
 checks a clean `main`, runs tests, bumps `package.json` / `package-lock.json`,
-publishes to npm, verifies the registry, then commits, tags, and pushes. npm
-will ask for a 2FA OTP once; the script does not bypass account security. For
-non-interactive use, pass `--release patch` (or another version).
+publishes to npm, verifies the registry, then commits, tags, and pushes.
+
+By default the script uses npm's **web/security-key 2FA** flow. npm opens its
+browser authorization URL; the script does not prompt for an OTP. This requires
+an interactive TTY. For non-interactive or authenticator fallback use:
+
+```bash
+npm run release -- --auth otp --otp 123456
+# or
+NPM_OTP=123456 npm run release -- --auth otp
+```
+
+The release script publishes to `https://registry.npmjs.org/` even if your
+default npm registry is a mirror. Authenticate against npmjs explicitly:
+
+```bash
+npm login --auth-type=web --registry https://registry.npmjs.org/
+```
+
+npm may return a staged release instead of publishing immediately; the script
+then calls `npm stage approve` with the same authentication mode.
 
 Non-mutating check:
 
@@ -35,10 +53,10 @@ Non-mutating check:
 npm run release:dry
 ```
 
-If npm returns a staged release instead of a direct publish, the script calls
-`npm stage approve` automatically after the same OTP. For CI/automation, use the
-manual `publish` GitHub Actions workflow with an `NPM_TOKEN` secret; npm may
-still require a maintainer approval for staged releases.
+For CI/automation, use the manual `publish` GitHub Actions workflow with an
+`NPM_TOKEN` secret; npm may still require a maintainer approval for staged
+releases. The local release script defaults to browser/security-key auth, so
+non-interactive CI should use the explicit OTP or token path.
 
 The package is `foreman-ops` (public, `publishConfig.access=public`), and the
 binary remains `foreman`.
