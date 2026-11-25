@@ -17,22 +17,30 @@ Use these values for the repository settings; they are the canonical copy:
 
 ## Release checklist
 
+The normal release is one command:
+
 ```bash
-npm test
-npm pack --dry-run
-npm version patch        # or minor/major
-git push --follow-tags
-npm publish
-gh release create "v$(node -p 'require("./package.json").version')" \
-  --title "Foreman v$(node -p 'require("./package.json").version')" \
-  --notes-file CHANGELOG.md
+npm run release -- --patch
 ```
 
-`npm publish` publishes the public `foreman-ops` package. Use the `simon_he`
-npm account or a granular token with publish rights. The package is public (`publishConfig.access=public`) and the
-binary remains `foreman`. There is also a manual GitHub Actions workflow
-(`publish`) with a dry-run default; add an `NPM_TOKEN` repository secret and run
-it from the Actions tab to publish with provenance.
+It checks a clean `main`, runs tests, bumps `package.json` / `package-lock.json`,
+publishes to npm, verifies the registry, then commits, tags, and pushes. npm
+will ask for a 2FA OTP once; the script does not bypass account security. Use
+`npm run release -- --minor` or `--major` for a larger bump.
+
+Non-mutating check:
+
+```bash
+npm run release:dry
+```
+
+If npm returns a staged release instead of a direct publish, the script calls
+`npm stage approve` automatically after the same OTP. For CI/automation, use the
+manual `publish` GitHub Actions workflow with an `NPM_TOKEN` secret; npm may
+still require a maintainer approval for staged releases.
+
+The package is `foreman-ops` (public, `publishConfig.access=public`), and the
+binary remains `foreman`.
 
 ## Security and secrets
 
