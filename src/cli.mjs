@@ -34,6 +34,10 @@ import {
 } from "./db.mjs";
 import { Leader, LeaderLoop } from "./leader.mjs";
 import { modelCatalog, planTaskModel, reasoningOptionFor } from "./model-policy.mjs";
+import {
+  leaderProviderSummary,
+  normalizeLeaderOverride,
+} from "./leader-options.mjs";
 import { notifyMaster } from "./notifier.mjs";
 import { validateArtifactPath } from "./projects.mjs";
 import {
@@ -82,7 +86,9 @@ function overridesFromFlags(flags) {
     concurrency: "concurrency",
     "data-dir": "dataDir",
     leader: "leaderMode",
+    "leader-provider": "leaderProvider",
     "leader-model": "leaderModel",
+    "dima-bin": "dimaBin",
     "codex-bin": "codexBin",
     "codex-model": "codexModel",
     "dim-bin": "dimBin",
@@ -292,15 +298,19 @@ async function commandInit(flags) {
         : null;
     const leaderMode =
       mode === "t3"
-        ? String(flags.leader || (await ask("Leader (rule/dim/codex/claude)", "dim")))
+        ? String(flags.leader || (await ask("Leader (rule/dim/dima/codex/claude)", "dim")))
         : "rule";
     const leaderModel =
       mode === "t3" && leaderMode !== "rule"
         ? String(
             flags["leader-model"] ||
               (await ask(
-                "Leader model (optional; e.g. gpt-6.2-astra for dim)",
-                leaderMode === "dim" ? "gpt-6.2-astra" : "",
+                "Leader model (optional; e.g. gpt-6.2-astra for dim, deepseek-v4.1-flash for dima)",
+                leaderMode === "dim"
+                  ? "gpt-6.2-astra"
+                  : leaderMode === "dima"
+                    ? "deepseek-v4.1-flash"
+                    : "",
               )),
           ).trim() || null
         : null;
@@ -362,6 +372,7 @@ async function commandInit(flags) {
       t3Worktree: false,
       concurrency: Number(flags.concurrency || 2),
       leaderMode,
+      leaderProvider: flags["leader-provider"] ? String(flags["leader-provider"]).trim() : null,
       leaderModel,
       leaderEffort,
       leaderTickMs: 3000,
@@ -483,11 +494,15 @@ async function commandModels(flags) {
   const { config, db } = open(overridesFromFlags(flags));
   try {
     const catalog = modelCatalog(config);
+    const leaderOptions = leaderProviderSummary(config);
     const payload = {
       leader: {
         mode: config.leaderMode,
-        model: config.leaderModel || null,
+        provider: config.leaderProvider || leaderOptions.default.provider,
+        model: config.leaderModel || leaderOptions.default.model,
         effort: config.leaderEffort || null,
+        default: leaderOptions.default,
+        choices: leaderOptions.choices,
       },
       provider: config.t3Provider || null,
       reasoningOption: config.t3ReasoningOption || null,
@@ -509,8 +524,9 @@ async function commandModels(flags) {
       return;
     }
     console.log(
-      `leader            ${payload.leader.mode}${payload.leader.model ? ` / ${payload.leader.model}` : ""}${payload.leader.effort ? ` / effort ${payload.leader.effort}` : ""}`,
+      `leader            ${payload.leader.mode}${payload.leader.provider && payload.leader.provider !== payload.leader.mode ? ` / ${payload.leader.provider}` : ""}${payload.leader.model ? ` / ${payload.leader.model}` : ""}${payload.leader.effort ? ` / effort ${payload.leader.effort}` : ""}`,
     );
+    console.log(`leader choices    ${payload.leader.choices.length}`);
     console.log(`provider          ${payload.provider || "(not set)"}`);
     console.log(`force             ${payload.forceProvider || "-"} / ${payload.forceModel || "-"}`);
     console.log(
@@ -795,22 +811,35 @@ async function commandMaster(flags, positional = []) {
       const project = flags.project || config.projectPath;
       const message = flags.message || "现在什么情况？";
       const title = flags.title || "Foreman 主控";
-      const result = spawnSync(
-        config.t3Bin,
-        [
-          "thread",
-          "start",
-          String(project),
-          String(message),
-          "--title",
-          String(title),
-          "--provider",
-          String(flags.provider || "foreman"),
-          "--model",
-          String(flags.model || "default"),
-          "--wait",
-          "--json",
-        ],
+      const selectedLeader = normalizeLeaderOverride(
+        {
+          provider: flags["leader-provider"],
+          model: flags["leader-model"],
+          effort: flags["leader-effort"],
+        },
+        config,
+      );
+      const masterModel = String(
+        flags.model ||
+          `${selectedLeader.provider}::${selectedLeader.model}`,
+      );
+      const masterArgs = [
+        "thread",
+        "start",
+        String(project),
+        String(message),
+        "--title",
+        String(title),
+        "--provider",
+        String(flags.provider || "foreman"),
+        "--model",
+        masterModel,
+        "--option",
+        `effort=${selectedLeader.effort}`,
+        "--wait",
+        "--json",
+      ];
+      const result = spawnSync(config.t3Bin, masterArgs,
         {
           cwd: config.cwd,
           encoding: "utf8",
@@ -1378,7 +1407,7 @@ function usage() {
   console.log(`foreman — a durable leader for agent fleets
 
 usage:
-  foreman init [--yes] [--project path] [--adapter mock|t3] [--provider dim] [--model slug] [--leader dim] [--leader-model slug] [--leader-effort auto|none|high|max] [--force-model slug] [--force-provider id] [--data-dir .foreman] [--port 3777] [--register] [--force]
+  foreman init [--yes] [--project path] [--adapter mock|t3] [--provider dim] [--model slug] [--leader dim|dima|codex|claude] [--leader-provider id] [--leader-model slug] [--leader-effort auto|none|high|max] [--force-model slug] [--force-provider id] [--data-dir .foreman] [--port 3777] [--register] [--force]
   foreman add <title> --brief "..." [--priority 50] [--adapter mock|t3] [--project name|path]
                 [--provider id] [--model slug] [--effort auto|none|high|max]
                 [--done-token DONE] [--artifact path] [--artifact-contains text] [--require-diff]

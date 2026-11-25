@@ -3,7 +3,12 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { reasoningOptionFor, reasoningValue } from "../src/model-policy.mjs";
+import { normalizeEffort, reasoningOptionFor, reasoningValue } from "../src/model-policy.mjs";
+import {
+  leaderConfigOptions,
+  normalizeLeaderOverride,
+  parseLeaderChoice,
+} from "../src/leader-options.mjs";
 
 // ACP provider that turns a T3 thread into a chat surface for the Foreman
 // control plane. It does not execute tasks itself; it forwards prompts to
@@ -59,8 +64,75 @@ function readToken() {
 }
 
 const token = readToken();
+const initialLeader = leaderConfigOptions(config).current;
+
+function debug(direction, message) {
+  if (!process.env.FOREMAN_ACP_DEBUG) return;
+  try {
+    fs.appendFileSync(
+      process.env.FOREMAN_ACP_DEBUG,
+      `${JSON.stringify({ at: new Date().toISOString(), direction, message })}\n`,
+    );
+  } catch {
+    // debug logging must never break ACP
+  }
+}
+
+function leaderOptions(session) {
+  const result = leaderConfigOptions(config, session?.leader || initialLeader);
+  session.leader = result.current;
+  return result;
+}
+
+function sendConfigUpdate(sessionId, session) {
+  const { configOptions } = leaderOptions(session);
+  send({
+    jsonrpc: "2.0",
+    method: "session/update",
+    params: {
+      sessionId,
+      update: {
+        sessionUpdate: "config_option_update",
+        configOptions,
+      },
+    },
+  });
+  return configOptions;
+}
+
+function applyModelSelection(session, value) {
+  const options = leaderOptions(session);
+  const parsed = parseLeaderChoice(value, options.options);
+  if (!parsed?.model) return false;
+  session.leader = normalizeLeaderOverride(
+    {
+      ...session.leader,
+      ...parsed,
+      provider: parsed.provider || session.leader.provider,
+    },
+    config,
+    options.options,
+  );
+  return true;
+}
+
+function applyEffortSelection(session, value) {
+  const effort = normalizeEffort(value);
+  if (!effort) return false;
+  session.leader = normalizeLeaderOverride(
+    { ...session.leader, effort },
+    config,
+  );
+  return true;
+}
+
+function sessionLeader(session, selectedModel = null) {
+  if (selectedModel) applyModelSelection(session, selectedModel);
+  return leaderOptions(session).current;
+}
 
 function send(message) {
+  debug("out", message);
   process.stdout.write(`${JSON.stringify(message)}\n`);
 }
 
@@ -390,7 +462,7 @@ async function delegatePendingTasks(applied, session) {
   return results;
 }
 
-async function askForeman(message, { delegateTasks = false } = {}) {
+async function askForeman(message, { delegateTasks = false, leader = null } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 130000);
   try {
@@ -399,7 +471,7 @@ async function askForeman(message, { delegateTasks = false } = {}) {
     const response = await fetch(`${controlUrl}/api/ask`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ message, delegateTasks }),
+      body: JSON.stringify({ message, delegateTasks, leader }),
       signal: controller.signal,
     });
     const text = await response.text();
@@ -430,6 +502,7 @@ async function askForeman(message, { delegateTasks = false } = {}) {
 async function handle(message) {
   const { id, method, params } = message;
   if (!method) return;
+  debug("in", message);
 
   if (method === "initialize") {
     reply(id, {
@@ -455,31 +528,77 @@ async function handle(message) {
 
   if (method === "session/new") {
     const sessionId = `sess_${crypto.randomUUID()}`;
-    sessions.set(sessionId, {
+    const session = {
       cwd: params?.cwd || ROOT,
       createdAt: Date.now(),
-    });
-    reply(id, { sessionId });
+      leader: { ...initialLeader },
+    };
+    sessions.set(sessionId, session);
+    const selected =
+      params?._meta?.selectedModel ||
+      params?.model ||
+      params?.config?.model ||
+      null;
+    if (selected) sessionLeader(session, selected);
+    const { configOptions } = leaderOptions(session);
+    reply(id, { sessionId, configOptions });
     return;
   }
 
   if (method === "session/load") {
     const sessionId = params?.sessionId || `sess_${crypto.randomUUID()}`;
-    sessions.set(sessionId, {
+    const session = {
       cwd: params?.cwd || ROOT,
       createdAt: Date.now(),
-    });
-    reply(id, {});
+      leader: { ...initialLeader },
+    };
+    sessions.set(sessionId, session);
+    const selected = params?._meta?.selectedModel || null;
+    if (selected) sessionLeader(session, selected);
+    const { configOptions } = leaderOptions(session);
+    reply(id, { configOptions });
     return;
   }
 
   if (method === "session/resume") {
     const sessionId = params?.sessionId || `sess_${crypto.randomUUID()}`;
-    sessions.set(sessionId, {
+    const session = {
       cwd: params?.cwd || ROOT,
       createdAt: Date.now(),
-    });
-    reply(id, {});
+      leader: { ...initialLeader },
+    };
+    sessions.set(sessionId, session);
+    const selected = params?._meta?.selectedModel || null;
+    if (selected) sessionLeader(session, selected);
+    const { configOptions } = leaderOptions(session);
+    reply(id, { configOptions });
+    return;
+  }
+
+  if (method === "session/set_config_option" || method === "session/set_model") {
+    const sessionId = params?.sessionId;
+    const session = sessions.get(sessionId);
+    if (!session) {
+      fail(id, -32602, `unknown session: ${sessionId}`);
+      return;
+    }
+    let changed = false;
+    if (method === "session/set_model") {
+      changed = applyModelSelection(session, params?.modelId || params?.model);
+    } else if (params?.configId === "model") {
+      changed = applyModelSelection(session, params?.value);
+    } else if (params?.configId === "effort") {
+      changed = applyEffortSelection(session, params?.value);
+    } else if (params?.configId === "mode") {
+      changed = true;
+    }
+    if (!changed) {
+      fail(id, -32602, "unsupported or invalid FC configuration");
+      return;
+    }
+    const { configOptions } = leaderOptions(session);
+    sendConfigUpdate(sessionId, session);
+    reply(id, { configOptions });
     return;
   }
 
@@ -504,8 +623,14 @@ async function handle(message) {
       return;
     }
     try {
+      const currentLeader = leaderOptions(session).current;
       const result = await askForeman(request, {
         delegateTasks: Boolean(mcpEndpoint),
+        leader: {
+          provider: currentLeader.provider,
+          model: currentLeader.model,
+          effort: currentLeader.effort,
+        },
       });
       const delegated = await delegatePendingTasks(result.applied, session);
       let answer = result.reply;

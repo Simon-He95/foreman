@@ -11,6 +11,10 @@ All notable changes to Foreman are documented here. The format follows
 - `leaderModel` and `leaderEffort` are passed to the legacy `dim exec` leader
   backend; `foreman init --leader-model/--leader-effort` and `foreman models`
   expose the master/leader policy separately from worker tiers.
+- T3 FC model/effort selection: the Foreman ACP provider advertises configured
+  provider/model choices and effort options; each master thread can choose its
+  own leader provider, model, and effort at creation time.
+- `leaderProvider` / `leaderChoices` and a native `dima` leader backend.
 - Per-task `provider` selection through CLI `--provider`, `POST /api/tasks`,
   task cards, and leader `add_task` actions. Reasoning option ids are selected
   per provider (`thought_level`, `effort`, `reasoningEffort`), including when a

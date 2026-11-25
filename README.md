@@ -277,14 +277,18 @@ foreman add "Audit the payment callback" \
   --effort max
 ```
 
-The **leader** has an independent `leaderMode` / `leaderModel` /
-`leaderEffort`; worker threads use `t3Provider`, `t3Model`, and the
-fast/strong/coding tiers. A task can override provider/model; `forceModel` and
-`forceProvider` are available when a deployment needs a fixed worker fleet.
-Check the effective values with `foreman models`. See
-[Models and effort](docs/models-and-effort.md). Model slugs are explicit config;
-Foreman does not yet auto-refresh the upstream T3 model catalog. The T3 master
-thread's model selector is not the leader model; set it in Foreman config.
+The **leader** has an independent `leaderMode` / `leaderProvider` /
+`leaderModel` / `leaderEffort`; worker threads use `t3Provider`, `t3Model`, and
+the fast/strong/coding tiers. A task can override provider/model; `forceModel`
+and `forceProvider` are available when a deployment needs a fixed worker fleet.
+
+When you create a **Foreman (control plane)** thread in T3, its model picker
+lists configured FC provider/model choices and its effort picker sets the
+leader effort for that thread. `leaderChoices` can add explicit provider/model
+choices; otherwise Foreman discovers models from the enabled T3 provider
+caches. Check the effective values and choices with `foreman models`. See
+[Models and effort](docs/models-and-effort.md). Restart T3 after adding a
+provider/model so its cache refreshes.
 
 ## Documentation
 
@@ -332,7 +336,7 @@ Known limits and the roadmap are tracked in
 - worker transport is HTTP; bring your own TLS
 - no budget enforcement yet
 - T3 completion is polled each tick; MCP events/webhooks are next
-- the T3 model catalog is explicit config, not auto-discovered
+- worker model slugs are explicit config; FC choices are discovered from enabled T3 providers (plus `leaderChoices`)
 - master notifications are user-role messages in T3, not OS notifications
 
 ## Contributing

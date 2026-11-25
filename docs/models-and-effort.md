@@ -68,13 +68,41 @@ node src/cli.mjs add "review migration" \
 If T3 rejects an option, the daemon records the error on the task. Check
 `orchestrator_capabilities` in T3 for the exact id/value list for a model.
 
+## FC selection in T3
+
+A T3 thread whose provider is **Foreman (control plane)** is the FC. Its model
+picker is populated with provider/model choices such as:
+
+```text
+dim::gpt-6.2-astra
+dima::deepseek-v4.1-flash
+codex::gpt-6.2-sol
+claudeAgent::claude-sonnet-5-5
+```
+
+and its effort picker uses `auto|none|high|max`. The selected values are sent
+with every `/api/ask` call, so different FC threads can use different
+leader providers/models/efforts.
+
+- `dim` and `dima` use their native CLI backends.
+- Other registered providers (including Codex, Claude Agent, and custom
+  providers) are executed through a T3 leader thread, so their T3 provider
+  authentication, model catalog, and reasoning option id are honored.
+- A provider that is unavailable or fails to answer falls back to Foreman's rule
+  report rather than hanging the master thread indefinitely.
+- Explicit `leaderChoices` are merged with choices discovered from enabled T3
+  provider caches. This is useful when a provider's cache only advertises a
+  default model (for example an alpha provider).
+- After adding/removing a T3 provider or model, restart T3 so its provider cache
+  refreshes; then restart Foreman if `leaderChoices`/`leaderProvider` changed.
+
 ## Upstream provider/model changes
 
-The **leader** has its own model and effort (`leaderMode`, `leaderModel`,
-`leaderEffort`). The **workers** use `t3Provider`, `t3Model`, and the
-`modelFast` / `modelStrong` / `modelCoding` tiers. A task may override the worker
-provider and model; `forceModel` and `forceProvider` remove that override path
-when a deployment needs a fixed fleet.
+The **leader** has its own model and effort (`leaderMode`, `leaderProvider`,
+`leaderModel`, `leaderEffort`). The **workers** use `t3Provider`, `t3Model`, and
+the `modelFast` / `modelStrong` / `modelCoding` tiers. A task may override the
+worker provider and model; `forceModel` and `forceProvider` remove that override
+path when a deployment needs a fixed fleet.
 
 Foreman does **not** automatically refresh the T3 provider/model catalog. The
 fast/strong/coding slugs are explicit config values (`modelFast`,

@@ -121,6 +121,26 @@ function resolveCodexBin(cwd, preferred) {
   return "codex";
 }
 
+function resolveDimaBin(preferred) {
+  const candidates = [
+    preferred,
+    which("dima"),
+    path.join(os.homedir(), ".npm-global", "bin", "dima"),
+    "/opt/homebrew/bin/dima",
+    "/usr/local/bin/dima",
+    "dima",
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    if (!candidate.includes(path.sep)) {
+      const found = which(candidate);
+      if (found) return found;
+      continue;
+    }
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return "dima";
+}
+
 function resolveDimBin(preferred) {
   const candidates = [
     preferred,
@@ -231,6 +251,8 @@ export function loadConfig(overrides = {}) {
       5000,
     ),
     leaderMode: pick("leaderMode", "FOREMAN_LEADER", "rule"),
+    leaderProvider: pick("leaderProvider", "FOREMAN_LEADER_PROVIDER", null),
+    leaderChoices: pick("leaderChoices", "FOREMAN_LEADER_CHOICES", null),
     leaderEffort: pick("leaderEffort", "FOREMAN_LEADER_EFFORT", null),
     leaderTickMs: num(
       pick("leaderTickMs", "FOREMAN_LEADER_TICK_MS", 20000),
@@ -255,6 +277,7 @@ export function loadConfig(overrides = {}) {
     ),
     codexModel: pick("codexModel", "FOREMAN_CODEX_MODEL", "gpt-6-astra"),
     dimBin: resolveDimBin(pick("dimBin", "FOREMAN_DIM_BIN", null)),
+    dimaBin: resolveDimaBin(pick("dimaBin", "FOREMAN_DIMA_BIN", null)),
     port,
     host: pick("host", "FOREMAN_HOST", "127.0.0.1"),
     controlUrl: pick(
@@ -281,6 +304,7 @@ export function loadConfig(overrides = {}) {
       "FOREMAN_T3_WORKTREE_BASE",
       "HEAD",
     ),
+    t3Home: pick("t3Home", "FOREMAN_T3_HOME", null),
     t3Provider: pick("t3Provider", "FOREMAN_T3_PROVIDER", null),
     t3Model: pick("t3Model", "FOREMAN_T3_MODEL", null),
     forceProvider: pick("forceProvider", "FOREMAN_FORCE_PROVIDER", null),
@@ -341,6 +365,8 @@ export function publicConfig(config) {
     concurrency,
     tickMs,
     leaderMode,
+    leaderProvider,
+    leaderChoices,
     leaderModel,
     leaderEffort,
     leaderAutoDestructive,
@@ -348,7 +374,9 @@ export function publicConfig(config) {
     codexBin,
     codexModel,
     dimBin,
+    dimaBin,
     t3Bin,
+    t3Home,
     t3Project,
     t3Worktree,
     t3WorktreeBase,
@@ -384,6 +412,8 @@ export function publicConfig(config) {
     concurrency,
     tickMs,
     leaderMode,
+    leaderProvider,
+    leaderChoices,
     leaderModel,
     leaderEffort,
     leaderAutoDestructive,
@@ -391,7 +421,9 @@ export function publicConfig(config) {
     codexBin,
     codexModel,
     dimBin,
+    dimaBin,
     t3Bin,
+    t3Home,
     t3Project,
     t3Worktree,
     t3WorktreeBase,

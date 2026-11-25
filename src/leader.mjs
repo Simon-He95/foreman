@@ -20,7 +20,10 @@ import {
   modelPolicyText,
   normalizeEffort,
   planTaskModel,
+  reasoningOptionFor,
+  reasoningValue,
 } from "./model-policy.mjs";
+import { normalizeLeaderOverride } from "./leader-options.mjs";
 import { validateArtifactPath } from "./projects.mjs";
 import { resolveTaskProject } from "./registry.mjs";
 
@@ -203,7 +206,7 @@ export class Leader {
     ].join("\n");
   }
 
-  async claudeTurn({ message, trigger }) {
+  async claudeTurn({ message, trigger, leaderConfig = this.config }) {
     const events = recentEvents(this.db, 12).reverse();
     const prompt = this.buildPrompt({ message, trigger, events });
     const args = ["-p", prompt, "--output-format", "json", "--max-turns", "1"];
@@ -242,7 +245,7 @@ export class Leader {
     };
   }
 
-  async codexTurn({ message, trigger }) {
+  async codexTurn({ message, trigger, leaderConfig = this.config }) {
     const events = recentEvents(this.db, 12).reverse();
     const prompt = this.buildPrompt({ message, trigger, events });
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "foreman-leader-"));
@@ -258,8 +261,12 @@ export class Leader {
         "-o",
         outFile,
       ];
-      const model = this.config.leaderModel || this.config.codexModel;
+      const model = leaderConfig.leaderModel || this.config.codexModel;
       if (model) args.push("-m", model);
+      const leaderEffort = normalizeEffort(leaderConfig.leaderEffort);
+      if (leaderEffort && leaderEffort !== "auto") {
+        args.push("-c", `model_reasoning_effort=${leaderEffort}`);
+      }
       args.push(prompt);
       const { code, stdout, stderr } = await run(this.config.codexBin, args, {
         cwd: this.config.cwd,
@@ -291,18 +298,18 @@ export class Leader {
     }
   }
 
-  async dimTurn({ message, trigger }) {
+  async dimTurn({ message, trigger, leaderConfig = this.config }) {
     const events = recentEvents(this.db, 12).reverse();
     const prompt = this.buildPrompt({ message, trigger, events });
     const workspace = path.join(this.config.dataDir, "leader-workspace");
     fs.mkdirSync(workspace, { recursive: true });
     const args = ["exec"];
-    if (this.config.leaderModel) {
+    if (leaderConfig.leaderModel) {
       // The legacy dim CLI wants a bare model id, not T3's provider/model slug.
-      const model = String(this.config.leaderModel).trim();
+      const model = String(leaderConfig.leaderModel).trim();
       args.push("--model", model.includes("/") ? model.slice(model.lastIndexOf("/") + 1) : model);
     }
-    const leaderEffort = normalizeEffort(this.config.leaderEffort);
+    const leaderEffort = normalizeEffort(leaderConfig.leaderEffort);
     if (leaderEffort && leaderEffort !== "auto") {
       args.push("--effort", leaderEffort);
     }
@@ -325,6 +332,131 @@ export class Leader {
     if (!parsed || typeof parsed.reply !== "string") {
       return {
         reply: oneLine(resultText, 1200) || "leader 没有返回内容。",
+        actions: [],
+        raw: resultText,
+      };
+    }
+    return {
+      reply: parsed.reply,
+      actions: Array.isArray(parsed.actions) ? parsed.actions.slice(0, 5) : [],
+      raw: resultText,
+    };
+  }
+
+  async dimaTurn({ message, trigger, leaderConfig = this.config }) {
+    const events = recentEvents(this.db, 12).reverse();
+    const prompt = this.buildPrompt({ message, trigger, events });
+    const workspace = path.join(this.config.dataDir, "leader-workspace");
+    fs.mkdirSync(workspace, { recursive: true });
+    const args = ["exec"];
+    if (leaderConfig.leaderModel) {
+      args.push("--model", String(leaderConfig.leaderModel).trim());
+    }
+    const leaderEffort = normalizeEffort(leaderConfig.leaderEffort);
+    if (leaderEffort && leaderEffort !== "auto") {
+      args.push("--effort", leaderEffort);
+    }
+    const { code, stdout, stderr } = await run(this.config.dimaBin, args, {
+      cwd: workspace,
+      timeoutMs: this.config.leaderTimeoutMs,
+      input: prompt,
+    });
+    if (code !== 0) {
+      throw new Error(
+        `dima exec exited ${code}: ${oneLine(stderr || stdout, 500)}`,
+      );
+    }
+    const resultText = stdout
+      .split(/\r?\n/)
+      .filter((line) => !/^The App Server is still|^workspace:|^session:/i.test(line.trim()))
+      .join("\n")
+      .trim();
+    const parsed = extractJson(resultText);
+    if (!parsed || typeof parsed.reply !== "string") {
+      return {
+        reply: oneLine(resultText, 1200) || "leader 没有返回内容。",
+        actions: [],
+        raw: resultText,
+      };
+    }
+    return {
+      reply: parsed.reply,
+      actions: Array.isArray(parsed.actions) ? parsed.actions.slice(0, 5) : [],
+      raw: resultText,
+    };
+  }
+
+  async t3Turn({ message, trigger, leaderConfig = this.config }) {
+    const events = recentEvents(this.db, 12).reverse();
+    const prompt = this.buildPrompt({ message, trigger, events });
+    const provider = String(leaderConfig.leaderProvider || "").trim();
+    const model = String(leaderConfig.leaderModel || "").trim();
+    if (!provider || !model) {
+      throw new Error("T3 leader requires a provider and model");
+    }
+    if (provider === "foreman" || provider === "foremanMock") {
+      throw new Error("recursive Foreman leader provider is not allowed");
+    }
+    const project = this.config.t3Project || this.config.projectPath;
+    const args = [
+      "thread",
+      "start",
+      String(project),
+      "-",
+      "--title",
+      "Foreman leader turn",
+      "--provider",
+      provider,
+      "--model",
+      model,
+      "--wait",
+      "--json",
+    ];
+    const leaderEffort = normalizeEffort(leaderConfig.leaderEffort);
+    if (leaderEffort && leaderEffort !== "auto") {
+      const option = reasoningOptionFor(
+        provider,
+        this.config.t3ReasoningOption,
+      );
+      args.push(
+        "--option",
+        `${option}=${reasoningValue(model, leaderEffort)}`,
+      );
+    }
+    const { code, stdout, stderr } = await run(this.config.t3Bin, args, {
+      cwd: this.config.cwd,
+      timeoutMs: this.config.leaderTimeoutMs,
+      input: prompt,
+    });
+    if (code !== 0) {
+      throw new Error(
+        `t3 leader exited ${code}: ${oneLine(stderr || stdout, 500)}`,
+      );
+    }
+    const output = String(stdout).trim();
+    let wrapper = null;
+    const lines = output.split(/\r?\n/).filter(Boolean);
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      try {
+        const parsed = JSON.parse(lines[index]);
+        if (parsed && typeof parsed === "object") {
+          wrapper = parsed;
+          break;
+        }
+      } catch {
+        // keep looking
+      }
+    }
+    const resultText =
+      wrapper?.reply ??
+      wrapper?.output ??
+      output;
+    const parsed = extractJson(
+      typeof resultText === "string" ? resultText : JSON.stringify(resultText),
+    );
+    if (!parsed || typeof parsed.reply !== "string") {
+      return {
+        reply: oneLine(String(resultText), 1200) || "leader 没有返回内容。",
         actions: [],
         raw: resultText,
       };
@@ -513,6 +645,7 @@ export class Leader {
     trigger = "user",
     recordUser = true,
     deferAddTasks = false,
+    leader = null,
   } = {}) {
     if (message && recordUser) addChat(this.db, "user", message);
     const smallTalk = trigger === "user" ? smallTalkReply(message) : null;
@@ -528,14 +661,30 @@ export class Leader {
     }
     let result;
     let fallback = false;
+    const selected = leader
+      ? normalizeLeaderOverride(leader, this.config)
+      : null;
+    const leaderConfig = selected
+      ? {
+          ...this.config,
+          leaderMode: selected.mode,
+          leaderProvider: selected.provider,
+          leaderModel: selected.model,
+          leaderEffort: selected.effort,
+        }
+      : this.config;
     const backend =
-      this.config.leaderMode === "claude"
-        ? () => this.claudeTurn({ message, trigger })
-        : this.config.leaderMode === "codex"
-          ? () => this.codexTurn({ message, trigger })
-          : this.config.leaderMode === "dim"
-            ? () => this.dimTurn({ message, trigger })
-            : null;
+      leaderConfig.leaderMode === "claude"
+        ? () => this.claudeTurn({ message, trigger, leaderConfig })
+        : leaderConfig.leaderMode === "codex"
+          ? () => this.codexTurn({ message, trigger, leaderConfig })
+          : leaderConfig.leaderMode === "dim"
+            ? () => this.dimTurn({ message, trigger, leaderConfig })
+            : leaderConfig.leaderMode === "dima"
+              ? () => this.dimaTurn({ message, trigger, leaderConfig })
+              : leaderConfig.leaderMode === "t3"
+                ? () => this.t3Turn({ message, trigger, leaderConfig })
+                : null;
 
     if (backend) {
       try {

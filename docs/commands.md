@@ -50,7 +50,8 @@ Flags override environment variables and `foreman.config.json`. The main set:
 --execution local|worker
 --project name|path
 --concurrency N
---leader rule|claude|codex|dim
+--leader rule|claude|codex|dim|dima
+--leader-provider id
 --leader-model slug
 --leader-effort auto|none|high|max
 --force-provider id
@@ -92,9 +93,11 @@ foreman models --json
 ```
 
 This prints the **effective** catalog after config and environment overrides. It
-does not modify T3. The provider/model catalog is intentionally explicit:
-upstream T3 additions or removals require updating `modelFast`, `modelStrong`,
-`modelCoding`, and `t3ReasoningOption`, then restarting `foreman up`.
+does not modify T3. Worker model slugs are intentionally explicit; FC choices are
+discovered from enabled T3 providers (plus `leaderChoices`). Upstream T3 worker
+model additions or removals require updating `modelFast`, `modelStrong`, and
+`modelCoding`, then restarting `foreman up`. FC choices refresh when T3
+refreshes its provider cache; restart T3 after adding/removing a provider.
 
 ## Release (maintainers)
 

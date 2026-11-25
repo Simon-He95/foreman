@@ -42,7 +42,7 @@ Known limits:
 - T3 completion is polled each tick; MCP events/webhooks are future work
 - master notifications are T3 user-role messages, not OS notifications
 - one bound master thread; multi-project master routing is on the roadmap
-- the T3 provider/model catalog is explicit config, not auto-discovered
+- worker model slugs are explicit config; FC choices are discovered from enabled T3 providers (plus `leaderChoices`)
 
 ## The mental model
 

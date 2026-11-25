@@ -558,10 +558,25 @@ export function startServer({ db, config, daemon, leader, logger = console }) {
         const body = await readBody(req);
         const message = String(body.message || "").trim().slice(0, 8000);
         if (!message) throw httpError(400, "message is required");
+        const leaderOverride =
+          body.leader && typeof body.leader === "object"
+            ? {
+                provider: body.leader.provider
+                  ? String(body.leader.provider).slice(0, 120)
+                  : undefined,
+                model: body.leader.model
+                  ? String(body.leader.model).slice(0, 240)
+                  : undefined,
+                effort: body.leader.effort
+                  ? String(body.leader.effort).slice(0, 40)
+                  : undefined,
+              }
+            : null;
         const result = await leader.turn({
           message,
           trigger: "user",
           deferAddTasks: body.delegateTasks === true,
+          leader: leaderOverride,
         });
         json(res, 200, { ok: true, ...result });
         return;

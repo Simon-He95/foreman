@@ -51,7 +51,10 @@ settings.providerInstances = {
       commandPath: dimaBin,
       commandArgs: ["acp"],
       distribution: "auto",
-      customModels: [],
+      // The Rust alpha may expose only a default placeholder model. These
+      // explicit models are forwarded to the provider and are also used by
+      // Foreman's dima leader/worker paths.
+      customModels: ["deepseek-v4.1-flash"],
     },
   },
 };

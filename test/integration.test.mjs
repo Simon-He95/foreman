@@ -40,6 +40,11 @@ import {
 } from "../src/db.mjs";
 import { Leader, LeaderLoop } from "../src/leader.mjs";
 import {
+  leaderChoices,
+  leaderConfigOptions,
+  normalizeLeaderOverride,
+} from "../src/leader-options.mjs";
+import {
   inferUserModelPreference,
   planTaskModel,
   reasoningOptionFor,
@@ -220,6 +225,121 @@ test("model policy chooses by difficulty and honors explicit overrides", () => {
   assert.equal(reasoningOptionFor("dima"), "effort");
   assert.equal(reasoningOptionFor("codex"), "reasoningEffort");
   assert.equal(reasoningOptionFor("claudeAgent"), "effort");
+});
+
+test("FC leader choices expose provider models and per-provider effort", () => {
+  const dir = tempDir();
+  const home = path.join(dir, "t3-home");
+  fs.mkdirSync(path.join(home, "caches"), { recursive: true });
+  fs.mkdirSync(path.join(home, "userdata"), { recursive: true });
+  fs.writeFileSync(
+    path.join(home, "caches", "dim.json"),
+    JSON.stringify({
+      providerInstanceId: "dim",
+      displayName: "DimAgent",
+      models: [{ slug: "dimcode-api-oauth/deepseek-v4.1-flash", name: "DeepSeek" }],
+    }),
+  );
+  fs.writeFileSync(
+    path.join(home, "caches", "dima.json"),
+    JSON.stringify({
+      providerInstanceId: "dima",
+      displayName: "DimAgent Rust",
+      models: [{ slug: "deepseek-v4.1-flash", name: "DeepSeek Rust" }],
+    }),
+  );
+  const config = testConfig(dir, {
+    t3Home: home,
+    leaderMode: "dim",
+    leaderModel: "gpt-6.2-astra",
+    leaderChoices: [
+      {
+        provider: "dima",
+        model: "deepseek-v4.1-flash",
+        label: "Rust DimAgent / DeepSeek",
+      },
+    ],
+  });
+  try {
+    const choices = leaderChoices(config);
+    assert.equal(choices.defaultChoice.provider, "dim");
+    assert.ok(choices.choices.some((choice) => choice.id === "dima::deepseek-v4.1-flash"));
+    const configOptions = leaderConfigOptions(config, {
+      provider: "dima",
+      model: "deepseek-v4.1-flash",
+      effort: "max",
+    });
+    assert.equal(configOptions.configOptions[0].currentValue, "dima::deepseek-v4.1-flash");
+    assert.equal(configOptions.configOptions[1].currentValue, "max");
+    const override = normalizeLeaderOverride(
+      { provider: "dima", model: "deepseek-v4.1-flash", effort: "high" },
+      config,
+    );
+    assert.equal(override.mode, "dima");
+    assert.equal(override.provider, "dima");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("leader override runs dima with model and effort and can use a T3 fallback provider", async () => {
+  const dir = tempDir();
+  const argsFile = path.join(dir, "args.txt");
+  const fakeDima = path.join(dir, "fake-dima.sh");
+  fs.writeFileSync(
+    fakeDima,
+    `#!/bin/sh\nprintf '%s\n' "$@" > ${JSON.stringify(argsFile)}\ncat >/dev/null\nprintf '%s\n' '{"reply":"fake dima leader reply","actions":[]}'\n`,
+    { mode: 0o755 },
+  );
+  const fakeT3 = path.join(dir, "fake-t3.sh");
+  fs.writeFileSync(
+    fakeT3,
+    `#!/bin/sh\nprintf '%s\n' "$@" > ${JSON.stringify(path.join(dir, "t3-args.txt"))}\ncat >/dev/null\nprintf '%s\n' '{"reply":"{\\"reply\\":\\"fake t3 leader reply\\",\\"actions\\":[]}"}\n'`,
+    { mode: 0o755 },
+  );
+  const config = testConfig(dir, {
+    leaderMode: "rule",
+    dimaBin: fakeDima,
+    t3Bin: fakeT3,
+    t3Project: dir,
+    t3ReasoningOption: "effort",
+    leaderChoices: [
+      {
+        provider: "dima",
+        model: "deepseek-v4.1-flash",
+        label: "Rust DimAgent / DeepSeek",
+      },
+    ],
+  });
+  const db = openDb(config.dbPath);
+  try {
+    const leader = new Leader({ db, config, logger: quiet });
+    const dima = await leader.turn({
+      message: "现在什么情况？",
+      trigger: "user",
+      leader: { provider: "dima", model: "deepseek-v4.1-flash", effort: "max" },
+    });
+    assert.equal(dima.fallback, false);
+    assert.equal(dima.reply, "fake dima leader reply");
+    const args = fs.readFileSync(argsFile, "utf8").trim().split("\n");
+    assert.equal(args[args.indexOf("--model") + 1], "deepseek-v4.1-flash");
+    assert.equal(args[args.indexOf("--effort") + 1], "max");
+
+    const t3 = await leader.turn({
+      message: "现在什么情况？",
+      trigger: "user",
+      leader: { provider: "custom", model: "custom-model", effort: "high" },
+    });
+    assert.equal(t3.fallback, false);
+    assert.match(t3.reply, /fake t3 leader reply/);
+    const t3Args = fs.readFileSync(path.join(dir, "t3-args.txt"), "utf8").trim().split("\n");
+    assert.equal(t3Args[t3Args.indexOf("--provider") + 1], "custom");
+    assert.equal(t3Args[t3Args.indexOf("--model") + 1], "custom-model");
+    assert.match(t3Args.join("\n"), /--option\neffort=high/);
+  } finally {
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("T3 adapter passes the task model and reasoning effort", async () => {
@@ -1231,6 +1351,10 @@ test("Foreman ACP provider forwards prompts to /api/ask", async () => {
             );
           }
           if (message.id === 2) {
+            const newSession = message.result;
+            assert.ok(Array.isArray(newSession.configOptions));
+            assert.ok(newSession.configOptions.some((option) => option.id === "model"));
+            assert.ok(newSession.configOptions.some((option) => option.id === "effort"));
             child.stdin.write(
               `${JSON.stringify({
                 jsonrpc: "2.0",

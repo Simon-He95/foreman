@@ -24,9 +24,11 @@ node src/cli.mjs init
 | `maxAttempts` | `FOREMAN_MAX_ATTEMPTS` | retry budget |
 | `port` / `host` | `FOREMAN_PORT` / `FOREMAN_HOST` | dashboard bind |
 | `authToken` | `FOREMAN_TOKEN` | dashboard/API bearer token |
-| `leaderMode` | `FOREMAN_LEADER` | `rule`, `dim`, `codex`, `claude` |
-| `leaderModel` | `FOREMAN_LEADER_MODEL` | optional leader model (bare id for legacy `dim`) |
-| `leaderEffort` | `FOREMAN_LEADER_EFFORT` | leader effort for backends that support it |
+| `leaderMode` | `FOREMAN_LEADER` | default leader backend: `rule`, `dim`, `dima`, `codex`, `claude` |
+| `leaderProvider` | `FOREMAN_LEADER_PROVIDER` | FC provider id; defaults from `leaderMode` (`claude` → `claudeAgent`) |
+| `leaderModel` | `FOREMAN_LEADER_MODEL` | default FC model |
+| `leaderEffort` | `FOREMAN_LEADER_EFFORT` | default FC effort |
+| `leaderChoices` | `FOREMAN_LEADER_CHOICES` | optional explicit FC choices: `{provider, model, label}`; merged with T3 discovery |
 | `leaderTickMs` | `FOREMAN_LEADER_TICK_MS` | automatic wake interval |
 
 ## T3
@@ -101,8 +103,10 @@ node src/cli.mjs master set <thread-id>
 node src/cli.mjs master test
 ```
 
-`master create` uses `t3Project`, provider `foreman`, model `default`, and binds
-the new thread automatically.
+`master create` uses `t3Project`, provider `foreman`, the default FC model
+choice, and binds the new thread automatically. In T3, the Foreman provider's
+model picker and effort picker set the leader for that master thread. T3 must be
+restarted after changing the provider/model catalog or registration.
 
 ## Task-level flags
 
