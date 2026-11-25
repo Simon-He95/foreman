@@ -259,7 +259,8 @@ path has been exercised end-to-end on the maintainer's machine.
 
 Known limits and the roadmap are tracked in
 [docs/README.md](docs/README.md#status-and-limits) and
-[issues](https://github.com/Simon-He95/foreman/issues). In particular:
+[issues](https://github.com/Simon-He95/foreman/issues). Release notes live in
+[CHANGELOG.md](CHANGELOG.md). In particular:
 
 - one control plane per SQLite ledger; no HA yet
 - worker transport is HTTP; bring your own TLS

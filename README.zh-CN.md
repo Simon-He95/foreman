@@ -211,7 +211,8 @@ Foreman 目前是 **alpha**。账本、租约、重试、完成契约、mock/T3 
 路径已在维护者机器上端到端验证。
 
 已知限制和路线图见 [docs/README.md](docs/README.md#status-and-limits) 和
-[Issues](https://github.com/Simon-He95/foreman/issues)：
+[Issues](https://github.com/Simon-He95/foreman/issues)；版本记录见
+[CHANGELOG.md](CHANGELOG.md)：
 
 - 一个 SQLite 账本只支持一个控制面，暂无 HA
 - worker 传输是 HTTP，需要自带 TLS
