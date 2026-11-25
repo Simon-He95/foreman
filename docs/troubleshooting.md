@@ -58,10 +58,11 @@ project.
 
 ## Model option rejected
 
-T3 model options differ. For Dim, newer reasoning models use
-`auto/low/medium/high/xhigh`; flash models use `auto/none/high/max`. Set
-`modelFast/modelStrong/modelCoding` and `t3ReasoningOption` explicitly for your
-provider. The task error includes the rejected option.
+T3 model options differ. Foreman reads the model's `role: reasoning` option
+descriptor and maps its provider-neutral effort to an advertised value. If the
+descriptor is missing or the cache is stale, set `t3ReasoningOption` as a
+fallback and restart T3/Foreman to refresh the catalog. The task error includes
+the rejected option and supported values when the catalog can determine them.
 
 ## `master create` fails
 

@@ -14,6 +14,7 @@ import {
   mergeModelRoutes,
   planTaskModel,
 } from "./model-policy.mjs";
+import { resolveModelTarget } from "./model-catalog.mjs";
 import { notifyMaster } from "./notifier.mjs";
 import { formatDuration } from "./state.mjs";
 
@@ -55,6 +56,63 @@ export class Daemon {
 
   leaseFor(task) {
     return this.adapterFor(task).leaseMs || this.config.leaseMs;
+  }
+
+  resolveTaskTarget(task) {
+    if (task.adapter !== "t3") {
+      return {
+        provider: task.provider || null,
+        model: task.model || null,
+        effort: task.effort || null,
+        validation: { ok: true, errors: [], warnings: [], suggestions: [] },
+      };
+    }
+    const masterFc = task.master_thread_id
+      ? getMasterFc(this.db, task.master_thread_id)
+      : null;
+    return resolveModelTarget(
+      this.config,
+      {
+        provider:
+          task.provider ||
+          this.config.forceProvider ||
+          this.config.t3Provider,
+        model: task.model || this.config.t3Model,
+        effort: task.effort,
+      },
+      {
+        preferredProviders: [
+          task.provider,
+          this.config.forceProvider,
+          masterFc?.provider,
+          this.config.t3Provider,
+        ],
+      },
+    );
+  }
+
+  preflightFailure(task, validation) {
+    const reason = `model target rejected before start: ${validation.errors.join("; ")}`;
+    const updated = updateTask(this.db, task.id, {
+      status: "blocked",
+      lease_until: null,
+      not_before: null,
+      error: reason,
+      finished_at: null,
+    });
+    appendEvent(this.db, task.id, "preflight_failed", {
+      errors: validation.errors,
+      warnings: validation.warnings,
+      suggestions: validation.suggestions,
+    });
+    this.logger.warn(`[daemon] blocked ${task.id} before start: ${reason}`);
+    notifyMaster(
+      this.db,
+      this.config,
+      `⛔ 启动前路由校验失败：${task.title}（${task.id}）\n${reason}`,
+      task.master_thread_id,
+    );
+    return updated;
   }
 
   async start() {
@@ -222,11 +280,19 @@ export class Daemon {
     if (slots === 0) return;
     const queued = queuedTasks(this.db, slots);
     for (const task of queued) {
+      const target = this.resolveTaskTarget(task);
+      if (task.adapter === "t3" && target.model && !target.validation.ok) {
+        this.preflightFailure(task, target.validation);
+        continue;
+      }
       const adapter = this.adapterFor(task);
       const lease = adapter.leaseMs || this.config.leaseMs;
       const ts = Date.now();
       const updated = updateTask(this.db, task.id, {
         status: "running",
+        provider: target.provider || task.provider,
+        model: target.model || task.model,
+        effort: task.effort,
         attempts: task.attempts + 1,
         started_at: ts,
         heartbeat_at: ts,
@@ -258,9 +324,7 @@ export class Daemon {
           adapter: task.adapter,
         });
         if (started.link) {
-          const model = task.model
-            ? String(task.model).replace(/^dimcode-api-oauth\//, "")
-            : null;
+          const model = task.model ? String(task.model) : null;
           notifyMaster(
             this.db,
             this.config,
@@ -523,14 +587,7 @@ export class Daemon {
       throw error;
     }
     let retryTarget = {};
-    // A task that failed before a thread existed has no useful model lock to
-    // preserve. Re-plan it against the current routes so changing a model does
-    // not leave a permanently poisoned retry button.
-    if (
-      task.adapter === "t3" &&
-      ["failed", "lost"].includes(task.status) &&
-      !task.thread_id
-    ) {
+    if (task.adapter === "t3") {
       const masterFc = task.master_thread_id
         ? getMasterFc(this.db, task.master_thread_id)
         : null;
@@ -539,27 +596,77 @@ export class Daemon {
         getWorkerModelRoutes(this.db, null),
         getWorkerModelRoutes(this.db, task.master_thread_id),
       );
-      const plan = planTaskModel(this.config, {
-        title: task.title,
-        brief: task.brief,
-        adapter: task.adapter,
-        provider: task.provider,
-        model: task.model,
-        effort: task.effort,
-        routes,
-        masterFc,
-      });
-      const provider = assertT3ProviderId(
-        plan.provider ||
-          this.config.forceProvider ||
-          task.provider ||
-          this.config.t3Provider,
-      );
-      retryTarget = {
-        provider,
-        model: plan.model,
-        effort: plan.effort,
-      };
+      // A task that failed before a thread existed has no useful model lock to
+      // preserve. Re-plan it against the current routes so changing a model
+      // does not leave a permanently poisoned retry button. A task that did
+      // start keeps its original target unless the target is itself now
+      // invalid; in that case retrying would only reproduce the failure.
+      let target = null;
+      if (["failed", "lost"].includes(task.status) && !task.thread_id) {
+        const plan = planTaskModel(this.config, {
+          title: task.title,
+          brief: task.brief,
+          adapter: task.adapter,
+          provider: task.provider,
+          model: task.model,
+          effort: task.effort,
+          routes,
+          masterFc,
+        });
+        target = resolveModelTarget(
+          this.config,
+          {
+            provider:
+              plan.provider ||
+              this.config.forceProvider ||
+              task.provider ||
+              this.config.t3Provider,
+            model: plan.model,
+            effort: plan.effort,
+          },
+          {
+            preferredProviders: [
+              plan.provider,
+              this.config.forceProvider,
+              task.provider,
+              masterFc?.provider,
+              this.config.t3Provider,
+            ],
+          },
+        );
+        retryTarget = {
+          provider: target.provider
+            ? assertT3ProviderId(target.provider)
+            : null,
+          model: target.model || plan.model,
+          effort: plan.effort,
+        };
+      } else {
+        target = resolveModelTarget(
+          this.config,
+          {
+            provider: task.provider || this.config.t3Provider,
+            model: task.model,
+            effort: task.effort,
+          },
+          {
+            preferredProviders: [
+              task.provider,
+              this.config.forceProvider,
+              masterFc?.provider,
+              this.config.t3Provider,
+            ],
+          },
+        );
+      }
+      if (target.model && !target.validation.ok) {
+        const error = new Error(
+          `model target rejected before retry: ${target.validation.errors.join("; ")}`,
+        );
+        error.status = 409;
+        error.suggestions = target.validation.suggestions;
+        throw error;
+      }
     }
     const updated = updateTask(this.db, task.id, {
       status: "queued",

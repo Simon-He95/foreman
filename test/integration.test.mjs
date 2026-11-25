@@ -50,10 +50,12 @@ import {
 import {
   inferUserModelPreference,
   planTaskModel,
-  reasoningOptionFor,
-  reasoningValue,
 } from "../src/model-policy.mjs";
-import { validateModelTarget } from "../src/model-catalog.mjs";
+import {
+  reasoningPlanForTarget,
+  resolveModelTarget,
+  validateModelTarget,
+} from "../src/model-catalog.mjs";
 import { notifyMaster } from "../src/notifier.mjs";
 import { resolveProjectPath, validateArtifactPath } from "../src/projects.mjs";
 import { ensureDefaultProject, resolveTaskProject } from "../src/registry.mjs";
@@ -219,16 +221,6 @@ test("model policy chooses by difficulty and honors explicit overrides", () => {
   const opus = inferUserModelPreference("用 Opus 认真做", config);
   assert.equal(opus.model, "dim/coding");
 
-  assert.equal(reasoningValue("dimcode-api-oauth/gpt-6.2-astra", "max"), "xhigh");
-  assert.equal(reasoningValue("dimcode-api-oauth/gpt-6.2-astra", "none"), "low");
-  assert.equal(
-    reasoningValue("dimcode-api-oauth/deepseek-v4.1-flash", "max"),
-    "max",
-  );
-  assert.equal(reasoningOptionFor("dim"), "thought_level");
-  assert.equal(reasoningOptionFor("dima"), "effort");
-  assert.equal(reasoningOptionFor("codex"), "reasoningEffort");
-  assert.equal(reasoningOptionFor("claudeAgent"), "effort");
 });
 
 test("model routes keep provider and model paired and support explicit overrides", () => {
@@ -497,12 +489,15 @@ test("model catalog preflight validates advertised provider/model/effort pairs",
   });
   assert.equal(wrongModel.ok, false);
   assert.ok(wrongModel.suggestions.length > 0);
-  const wrongEffort = validateModelTarget(config, {
+  // "auto" means "let the provider choose": it is valid even when the
+  // provider does not advertise an explicit auto option.
+  const autoEffort = validateModelTarget(config, {
     provider: "dim",
     model: "dimcode-api-oauth/deepseek-v4.1-flash",
     effort: "auto",
   });
-  assert.equal(wrongEffort.ok, false);
+  assert.equal(autoEffort.ok, true);
+  assert.equal(autoEffort.reasoning.value, null);
 });
 
 test("FC leader choices expose provider models and per-provider effort", () => {
@@ -718,9 +713,262 @@ test("leader override runs dima with model and effort and can use a T3 fallback 
   }
 });
 
+test("model target resolution uses catalog identity, not model-string prefixes", () => {
+  const dir = tempDir();
+  const home = path.join(dir, "t3-home");
+  fs.mkdirSync(path.join(home, "caches"), { recursive: true });
+  const descriptor = (id, values) => ({
+    capabilities: {
+      optionDescriptors: [
+        {
+          id,
+          role: "reasoning",
+          type: "select",
+          options: values.map((value) => ({ id: value })),
+        },
+      ],
+    },
+  });
+  fs.writeFileSync(
+    path.join(home, "caches", "alpha.json"),
+    JSON.stringify({
+      providerInstanceId: "alpha",
+      models: [
+        { slug: "shared-model", name: "Shared", ...descriptor("effort", ["none", "high", "max"]) },
+        { slug: "alpha-only", name: "Alpha", aliases: ["alpha", "a1"], ...descriptor("thought_level", ["auto", "high", "xhigh"]) },
+      ],
+    }),
+  );
+  fs.writeFileSync(
+    path.join(home, "caches", "beta.json"),
+    JSON.stringify({
+      providerInstanceId: "beta",
+      models: [
+        { slug: "shared-model", name: "Shared", ...descriptor("reasoningEffort", ["low", "medium", "high", "max"]) },
+      ],
+    }),
+  );
+  const config = testConfig(dir, { t3Home: home, t3Provider: "alpha" });
+
+  const ambiguous = resolveModelTarget(config, { model: "shared-model" });
+  assert.equal(ambiguous.validation.ok, false);
+  assert.match(ambiguous.validation.errors.join("\n"), /provider is required/);
+  assert.deepEqual(
+    ambiguous.validation.suggestions.map((item) => item.provider).sort(),
+    ["alpha", "beta"],
+  );
+
+  const preferred = resolveModelTarget(config, { model: "shared-model" }, {
+    preferredProviders: ["beta"],
+  });
+  assert.equal(preferred.provider, "beta");
+  assert.equal(preferred.validation.ok, true);
+
+  const alias = resolveModelTarget(
+    config,
+    { model: "a1", effort: "max" },
+    { preferredProviders: ["alpha"] },
+  );
+  assert.equal(alias.provider, "alpha");
+  assert.equal(alias.model, "alpha-only");
+  assert.equal(alias.inferredProvider, true);
+  assert.equal(alias.validation.reasoning.optionId, "thought_level");
+  assert.equal(alias.validation.reasoning.value, "xhigh");
+  assert.equal(
+    reasoningPlanForTarget(config, {
+      provider: "alpha",
+      model: "shared-model",
+      effort: "max",
+    }).optionId,
+    "effort",
+  );
+  assert.equal(
+    reasoningPlanForTarget(config, {
+      provider: "beta",
+      model: "shared-model",
+      effort: "max",
+    }).value,
+    "max",
+  );
+
+  const explicitOnlyConfig = testConfig(dir, {
+    t3Home: home,
+    leaderChoices: [{ provider: "gamma", model: "explicit-only" }],
+  });
+  const explicitOnly = validateModelTarget(explicitOnlyConfig, {
+    provider: "gamma",
+    model: "explicit-only",
+    effort: "max",
+  });
+  assert.equal(explicitOnly.ok, false);
+  assert.match(explicitOnly.errors.join("\n"), /not advertised/);
+});
+
+test("local daemon blocks an invalid queued target before starting a T3 thread", async () => {
+  const dir = tempDir();
+  const home = path.join(dir, "t3-home");
+  fs.mkdirSync(path.join(home, "caches"), { recursive: true });
+  fs.writeFileSync(
+    path.join(home, "caches", "dim.json"),
+    JSON.stringify({
+      providerInstanceId: "dim",
+      models: [{ slug: "dim/valid", name: "Valid" }],
+    }),
+  );
+  const started = path.join(dir, "started.txt");
+  const script = path.join(dir, "fake-t3.sh");
+  fs.writeFileSync(
+    script,
+    `#!/bin/sh\nprintf '%s\\n' "$@" > ${JSON.stringify(started)}\necho '{"threadId":"mcp:should-not-start"}'\n`,
+    { mode: 0o755 },
+  );
+  const config = testConfig(dir, {
+    adapter: "t3",
+    t3Home: home,
+    t3Bin: script,
+    t3Provider: "dim",
+    t3Model: "dim/valid",
+    t3Worktree: false,
+  });
+  const db = openDb(config.dbPath);
+  try {
+    const task = addTask(db, {
+      title: "invalid target",
+      brief: "should not start",
+      adapter: "t3",
+      projectPath: dir,
+      provider: "dim",
+      model: "dim/not-advertised",
+      effort: "max",
+    });
+    const daemon = new Daemon({
+      db,
+      config,
+      adapters: createAdapterRegistry(config),
+      logger: quiet,
+    });
+    await daemon.tick();
+    const blocked = getTask(db, task.id);
+    assert.equal(blocked.status, "blocked");
+    assert.match(blocked.error, /not advertised by T3/);
+    assert.equal(fs.existsSync(started), false);
+  } finally {
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("worker claim blocks an invalid target before it can start", () => {
+  const dir = tempDir();
+  const home = path.join(dir, "t3-home");
+  fs.mkdirSync(path.join(home, "caches"), { recursive: true });
+  fs.writeFileSync(
+    path.join(home, "caches", "dim.json"),
+    JSON.stringify({
+      providerInstanceId: "dim",
+      models: [{ slug: "dim/valid", name: "Valid" }],
+    }),
+  );
+  const config = testConfig(dir, {
+    adapter: "t3",
+    t3Home: home,
+    t3Provider: "dim",
+    t3Model: "dim/valid",
+    executionMode: "local",
+  });
+  const db = openDb(config.dbPath);
+  try {
+    registerWorker(db, {
+      id: "worker-a",
+      capacity: 1,
+      protocolVersion: WORKER_PROTOCOL_VERSION,
+    });
+    const task = addTask(db, {
+      title: "invalid worker target",
+      brief: "should not be claimed",
+      adapter: "t3",
+      projectPath: dir,
+      provider: "dim",
+      model: "dim/not-advertised",
+      effort: "max",
+    });
+    const claimed = claimTasksForWorker(db, config, {
+      workerId: "worker-a",
+      limit: 1,
+    });
+    assert.equal(claimed.length, 0);
+    assert.equal(getTask(db, task.id).status, "blocked");
+  } finally {
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("T3 adapter passes the task model and reasoning effort", async () => {
   const dir = tempDir();
   try {
+    const home = path.join(dir, "t3-home");
+    fs.mkdirSync(path.join(home, "caches"), { recursive: true });
+    fs.writeFileSync(
+      path.join(home, "caches", "dim.json"),
+      JSON.stringify({
+        providerInstanceId: "dim",
+        displayName: "DimAgent",
+        models: [
+          {
+            slug: "dim/fast",
+            name: "Fast",
+            capabilities: {
+              optionDescriptors: [
+                {
+                  id: "thought_level",
+                  role: "reasoning",
+                  type: "select",
+                  options: [{ id: "none" }, { id: "high" }, { id: "max" }],
+                },
+              ],
+            },
+          },
+          {
+            slug: "dim/strong",
+            name: "Strong",
+            capabilities: {
+              optionDescriptors: [
+                {
+                  id: "thought_level",
+                  role: "reasoning",
+                  type: "select",
+                  options: [{ id: "none" }, { id: "high" }, { id: "xhigh" }],
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(home, "caches", "dima.json"),
+      JSON.stringify({
+        providerInstanceId: "dima",
+        displayName: "DimAgent Rust",
+        models: [
+          {
+            slug: "deepseek-v4.1-flash",
+            name: "DeepSeek",
+            capabilities: {
+              optionDescriptors: [
+                {
+                  id: "effort",
+                  role: "reasoning",
+                  type: "select",
+                  options: [{ id: "none" }, { id: "high" }, { id: "max" }],
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    );
     const out = path.join(dir, "t3-args.txt");
     const script = path.join(dir, "fake-t3.sh");
     fs.writeFileSync(
@@ -729,6 +977,7 @@ test("T3 adapter passes the task model and reasoning effort", async () => {
       { mode: 0o755 },
     );
     const config = testConfig(dir, {
+      t3Home: home,
       t3Bin: script,
       t3Provider: "dim",
       t3Model: "dim/fast",
@@ -750,7 +999,7 @@ test("T3 adapter passes the task model and reasoning effort", async () => {
     const modelAt = args.indexOf("--model");
     assert.equal(args[modelAt + 1], "dim/strong");
     const optionAt = args.indexOf("--option");
-    assert.equal(args[optionAt + 1], "thought_level=max");
+    assert.equal(args[optionAt + 1], "thought_level=xhigh");
     assert.match(args.join("\n"), /完成后最后单独一行输出：TASK_DONE/);
 
     await adapter.start({
@@ -795,7 +1044,20 @@ test("small talk gets a short reply instead of a status dump", async () => {
 
 test("leader can defer a t3 task and import it as a running child", async () => {
   const dir = tempDir();
+  const home = path.join(dir, "t3-home");
+  fs.mkdirSync(path.join(home, "caches"), { recursive: true });
+  fs.writeFileSync(
+    path.join(home, "caches", "dim.json"),
+    JSON.stringify({
+      providerInstanceId: "dim",
+      models: [
+        { slug: "dim/fast", name: "Fast" },
+        { slug: "dim/strong", name: "Strong" },
+      ],
+    }),
+  );
   const config = testConfig(dir, {
+    t3Home: home,
     t3Provider: "dim",
     t3Model: "dim/fast",
     leaderMode: "rule",

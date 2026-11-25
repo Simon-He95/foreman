@@ -346,16 +346,12 @@ export function loadConfig(overrides = {}) {
     ),
   };
 
-  const isDimProvider = config.t3Provider === "dim";
   config.modelFast = config.modelFast || config.t3Model || null;
-  config.modelStrong =
-    config.modelStrong ||
-    (isDimProvider ? "dimcode-api-oauth/gpt-6.2-astra" : config.modelFast);
-  config.modelCoding =
-    config.modelCoding ||
-    (isDimProvider ? "dimcode-api-oauth/claude-opus-5-5" : config.modelFast);
-  config.t3ReasoningOption =
-    config.t3ReasoningOption || (isDimProvider ? "thought_level" : "effort");
+  config.modelStrong = config.modelStrong || config.modelFast;
+  config.modelCoding = config.modelCoding || config.modelFast;
+  // This is only a fallback for deployments without a readable T3 catalog.
+  // The catalog's option descriptor is used whenever it is available.
+  config.t3ReasoningOption = config.t3ReasoningOption || "effort";
 
   if (!["local", "worker"].includes(config.executionMode)) {
     throw new Error(

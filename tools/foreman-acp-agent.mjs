@@ -3,7 +3,8 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { normalizeEffort, reasoningOptionFor, reasoningValue } from "../src/model-policy.mjs";
+import { normalizeEffort } from "../src/model-policy.mjs";
+import { reasoningPlanForTarget } from "../src/model-catalog.mjs";
 import {
   leaderConfigOptions,
   normalizeLeaderOverride,
@@ -418,15 +419,18 @@ async function delegatePendingTasks(applied, session) {
       };
       if (task.model) target.model = task.model;
       if (task.effort && task.effort !== "auto") {
-        target.options = [
+        const reasoning = reasoningPlanForTarget(
+          config,
           {
-            id: reasoningOptionFor(
-              target.providerInstanceId,
-              task.reasoningOption || config.t3ReasoningOption,
-            ),
-            value: reasoningValue(task.model, task.effort),
+            provider: target.providerInstanceId,
+            model: task.model,
+            effort: task.effort,
           },
-        ];
+          task.reasoningOption || config.t3ReasoningOption,
+        );
+        if (reasoning.optionId && reasoning.value) {
+          target.options = [{ id: reasoning.optionId, value: reasoning.value }];
+        }
       }
       let taskText = String(task.brief || task.title || "");
       if (

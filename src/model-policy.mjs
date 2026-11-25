@@ -146,15 +146,6 @@ export function modelRouteText(routes) {
     .join(" | ");
 }
 
-export function reasoningOptionFor(provider, fallback = null) {
-  const id = String(provider || "").trim();
-  // T3 providers do not share the same model-option id for reasoning effort.
-  if (id === "dim") return "thought_level";
-  if (id === "codex") return "reasoningEffort";
-  if (id === "dima" || id === "claudeAgent") return "effort";
-  return fallback || "effort";
-}
-
 export function normalizeEffort(value) {
   if (value === null || value === undefined) return null;
   const raw = String(value).trim().toLowerCase();
@@ -162,33 +153,36 @@ export function normalizeEffort(value) {
   return EFFORT_ALIASES[raw] || null;
 }
 
-export function reasoningValue(model, effort) {
-  const value = normalizeEffort(effort);
-  if (!value || value === "auto") return value;
-  const name = String(model || "").toLowerCase();
-  // Dim's newer reasoning models expose xhigh as their maximum, while the
-  // flash models use max and none. Keep the task-level vocabulary stable and
-  // translate only at the provider boundary.
-  if (/gpt-6\.(1|2)|claude-(opus|sonnet)-5|astra|sol/.test(name)) {
-    if (value === "max") return "xhigh";
-    if (value === "none") return "low";
-  }
-  return value;
+/**
+ * Map Foreman's provider-neutral effort vocabulary onto the option values a
+ * concrete T3 model advertises. This is intentionally capability-driven: the
+ * same "max" can be max, xhigh, ultra, or absent depending on the model.
+ */
+export function reasoningOptionValue(effort, availableValues = []) {
+  const canonical = normalizeEffort(effort);
+  if (!canonical || canonical === "auto") return null;
+  const available = new Set(
+    availableValues
+      .map((value) => String(value || "").trim().toLowerCase())
+      .filter(Boolean),
+  );
+  const preference = {
+    none: ["none", "minimal", "low", "medium", "off"],
+    high: ["high", "medium", "xhigh"],
+    max: ["max", "xhigh", "ultra", "ultrathink", "high"],
+  }[canonical] || [canonical];
+  return preference.find((value) => available.has(value)) || null;
 }
 
 export function modelCatalog(config) {
   const fast = config.modelFast || config.t3Model || null;
-  const strong =
-    config.modelStrong ||
-    (config.t3Provider === "dim"
-      ? "dimcode-api-oauth/gpt-6.2-astra"
-      : fast);
-  const coding =
-    config.modelCoding ||
-    (config.t3Provider === "dim"
-      ? "dimcode-api-oauth/claude-opus-5-5"
-      : fast);
-  return { fast, strong, coding };
+  // Strong/coding are explicit deployment choices. Do not invent a model name
+  // from a provider id: model inventories change independently of Foreman.
+  return {
+    fast,
+    strong: config.modelStrong || fast,
+    coding: config.modelCoding || fast,
+  };
 }
 
 export function classifyTask({ title = "", brief = "" } = {}) {

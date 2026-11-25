@@ -8,6 +8,7 @@ import {
   updateTask,
   upsertWorker,
 } from "./db.mjs";
+import { resolveModelTarget } from "./model-catalog.mjs";
 import { WORKER_PROTOCOL_VERSION } from "./protocol.mjs";
 
 export function registerWorker(db, input) {
@@ -112,11 +113,51 @@ export function claimTasksForWorker(db, config, { workerId, limit } = {}) {
 
   const claimed = [];
   for (const task of candidates) {
+    const target =
+      task.adapter === "t3"
+        ? resolveModelTarget(
+            config,
+            {
+              provider: task.provider || config.forceProvider || config.t3Provider,
+              model: task.model || config.t3Model,
+              effort: task.effort,
+            },
+            {
+              preferredProviders: [
+                task.provider,
+                config.forceProvider,
+                config.t3Provider,
+              ],
+            },
+          )
+        : {
+            provider: task.provider || null,
+            model: task.model || null,
+            effort: task.effort || null,
+            validation: { ok: true, errors: [], warnings: [], suggestions: [] },
+          };
+    if (task.adapter === "t3" && target.model && !target.validation.ok) {
+      updateTask(db, task.id, {
+        status: "blocked",
+        error: `model target rejected before worker claim: ${target.validation.errors.join("; ")}`,
+        lease_until: null,
+        not_before: null,
+        finished_at: null,
+      });
+      appendEvent(db, task.id, "preflight_failed", {
+        errors: target.validation.errors,
+        warnings: target.validation.warnings,
+        suggestions: target.validation.suggestions,
+      });
+      continue;
+    }
     const ts = Date.now();
     const lease = leaseForAdapter(config, task.adapter);
     const attemptId = newId("att");
     const updated = updateTask(db, task.id, {
       status: "running",
+      provider: target.provider || task.provider,
+      model: target.model || task.model,
       worker_id: workerId,
       attempt_id: attemptId,
       attempts: task.attempts + 1,

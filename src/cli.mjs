@@ -43,9 +43,10 @@ import {
   modelCatalog,
   modelRouteText,
   planTaskModel,
-  reasoningOptionFor,
 } from "./model-policy.mjs";
-import { validateModelTarget } from "./model-catalog.mjs";
+import {
+  resolveModelTarget,
+} from "./model-catalog.mjs";
 import {
   leaderProviderSummary,
   normalizeLeaderOverride,
@@ -353,20 +354,13 @@ async function commandInit(flags) {
       );
     }
 
-    const modelFast =
-      mode === "t3" ? model : null;
-    const modelStrong =
-      mode === "t3"
-        ? provider === "dim"
-          ? "dimcode-api-oauth/gpt-6.2-astra"
-          : model
-        : null;
-    const modelCoding =
-      mode === "t3"
-        ? provider === "dim"
-          ? "dimcode-api-oauth/claude-opus-5-5"
-          : model
-        : null;
+    // Setup can only prove the worker model the user selected. Do not invent
+    // strong/coding slugs for a provider: a renamed or unadvertised model would
+    // create an invalid config that only fails at thread start. Users can add
+    // per-tier routes later after inspecting the T3 catalog.
+    const modelFast = mode === "t3" ? model : null;
+    const modelStrong = mode === "t3" ? model : null;
+    const modelCoding = mode === "t3" ? model : null;
     const config = {
       dataDir: displayPath(cwd, dataDir),
       adapter: mode,
@@ -480,18 +474,29 @@ async function commandAdd(flags, positional) {
     routes,
     modelOverride: Boolean(flags.model),
   });
-  const provider = assertT3ProviderId(
-    config.forceProvider || plan.provider || flags.provider || null,
-  );
-  if (adapter === "t3" && plan.model) {
-    const validation = validateModelTarget(config, {
-      provider,
+  const resolution = resolveModelTarget(
+    config,
+    {
+      provider:
+        config.forceProvider ||
+        plan.provider ||
+        flags.provider ||
+        config.t3Provider,
       model: plan.model,
       effort: plan.effort,
-    });
-    if (!validation.ok) {
-      throw new Error(validation.errors.join("; "));
-    }
+    },
+    {
+      preferredProviders: [
+        config.forceProvider,
+        plan.provider,
+        flags.provider,
+        config.t3Provider,
+      ],
+    },
+  );
+  const provider = assertT3ProviderId(resolution.provider);
+  if (adapter === "t3" && plan.model && !resolution.validation.ok) {
+    throw new Error(resolution.validation.errors.join("; "));
   }
   const task = addTask(db, {
     title,
@@ -502,7 +507,7 @@ async function commandAdd(flags, positional) {
     projectId: resolved.project?.id ?? null,
     permissionMode: flags.permission || null,
     provider,
-    model: plan.model,
+    model: resolution.model || plan.model,
     effort: plan.effort,
     maxAttempts: Number(flags["max-attempts"]) || config.maxAttempts,
     completionToken: flags["done-token"]
@@ -543,12 +548,14 @@ async function commandModels(flags) {
       },
       provider: config.t3Provider || null,
       reasoningOption: config.t3ReasoningOption || null,
-      reasoningOptions: {
-        dim: reasoningOptionFor("dim"),
-        dima: reasoningOptionFor("dima"),
-        codex: reasoningOptionFor("codex"),
-        claudeAgent: reasoningOptionFor("claudeAgent"),
-      },
+      reasoningOptions: Object.fromEntries(
+        leaderOptions.choices
+          .filter((choice) => choice.reasoning?.id)
+          .map((choice) => [
+            `${choice.provider}::${choice.model}`,
+            choice.reasoning.id,
+          ]),
+      ),
       forceProvider: config.forceProvider || null,
       forceModel: config.forceModel || null,
       workerRoutes,
@@ -569,7 +576,7 @@ async function commandModels(flags) {
     console.log(`force             ${payload.forceProvider || "-"} / ${payload.forceModel || "-"}`);
     console.log(`worker routes     ${modelRouteText(payload.workerRoutes)}`);
     console.log(
-      `reasoning option  ${payload.reasoningOption || "(not set)"} (fallback; dim/dima/codex/claude auto)`,
+      `reasoning option  ${payload.reasoningOption || "(catalog-driven when available)"}`,
     );
     console.log(`fast              ${payload.fast || "(provider default)"}`);
     console.log(`strong            ${payload.strong || "(provider default)"}`);

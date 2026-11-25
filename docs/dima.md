@@ -97,13 +97,13 @@ The Rust alpha may expose only a default placeholder model in T3. The
 same model can be passed to `dima exec --model ...`. The dima registration also
 sets DeepSeek V4.1 Flash capabilities to its real effort choices:
 `none`, `high`, `max`. Restart T3 after changing this registration so the model
-picker reloads the descriptors. Foreman automatically uses the right reasoning
-option id per provider:
-`dim` uses `thought_level`, `dima` uses `effort`, `codex` uses
-`reasoningEffort`, and `claudeAgent` uses `effort`. `t3ReasoningOption` is only
-a fallback for custom providers; it is not needed for the built-in ids. If a
-custom provider rejects the value, inspect its `orchestrator_capabilities` and
-set `t3ReasoningOption` accordingly.
+picker reloads the descriptors. Foreman reads the id and values from the
+model's `role: reasoning` option descriptor (`thought_level`, `effort`,
+`reasoningEffort`, or a custom id); there is no provider-name switch in the
+routing path. `t3ReasoningOption` is only a fallback when the T3 catalog is not
+readable. If a custom provider rejects a value, inspect its
+`orchestrator_capabilities` and set `t3ReasoningOption` only for that fallback
+case.
 
 ## Permissions
 

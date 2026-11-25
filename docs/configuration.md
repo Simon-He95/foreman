@@ -41,7 +41,7 @@ node src/cli.mjs init
 | `t3Model` | `FOREMAN_T3_MODEL` | default worker model |
 | `t3Worktree` | `FOREMAN_T3_WORKTREE` | create a worktree per thread |
 | `t3WorktreeBase` | `FOREMAN_T3_WORKTREE_BASE` | worktree base ref |
-| `t3ReasoningOption` | `FOREMAN_T3_REASONING_OPTION` | fallback reasoning option for custom providers; built-ins auto-map (`dim`→`thought_level`, `dima`/`claudeAgent`→`effort`, `codex`→`reasoningEffort`) |
+| `t3ReasoningOption` | `FOREMAN_T3_REASONING_OPTION` | fallback reasoning option id only when the T3 catalog has no descriptor; the model's `role: reasoning` descriptor id and allowed values win when available |
 | `modelFast` | `FOREMAN_MODEL_FAST` | light/standard model |
 | `modelStrong` | `FOREMAN_MODEL_STRONG` | deep/research model |
 | `modelCoding` | `FOREMAN_MODEL_CODING` | coding/refactor model |
@@ -91,8 +91,8 @@ slug is only unique within its provider:
       "effort": "max"
     },
     "coding": {
-      "provider": "dim",
-      "model": "dimcode-api-oauth/claude-opus-5-5",
+      "provider": "claudeAgent",
+      "model": "claude-opus-5-5",
       "effort": "max"
     }
   }
@@ -113,7 +113,7 @@ with the `set_model_routes` action:
   "type": "set_model_routes",
   "routes": {
     "deep": { "provider": "dima", "model": "deepseek-v4.1-flash", "effort": "max" },
-    "coding": { "provider": "dim", "model": "dimcode-api-oauth/claude-opus-5-5", "effort": "max" }
+    "coding": { "provider": "claudeAgent", "model": "claude-opus-5-5", "effort": "max" }
   }
 }
 ```

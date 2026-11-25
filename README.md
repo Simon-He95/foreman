@@ -286,7 +286,9 @@ task category: “research with X, fixes with Y, default with Z.” Foreman pers
 those routes per master (`workerModelRoutes`) and shows the current FC identity
 and route table to the leader. Routes are provider-qualified; a one-off request
 uses `modelOverride`. The optional `forceModel` / `forceProvider` locks remain
-available when a deployment truly needs a fixed fleet.
+available when a deployment truly needs a fixed fleet. Provider/model identity
+and reasoning option ids are resolved from the T3 catalog; a bare model slug
+claimed by multiple providers is rejected instead of guessed from its string.
 
 When you create a **Foreman (control plane)** thread in T3, its model picker
 lists configured FC provider/model choices and its effort picker sets the

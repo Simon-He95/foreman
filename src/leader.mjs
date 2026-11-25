@@ -32,11 +32,14 @@ import {
   normalizeModelRoute,
   normalizeModelRoutes,
   planTaskModel,
-  reasoningOptionFor,
-  reasoningValue,
 } from "./model-policy.mjs";
 import { normalizeLeaderOverride } from "./leader-options.mjs";
-import { validateModelRoutes, validateModelTarget } from "./model-catalog.mjs";
+import {
+  reasoningPlanForTarget,
+  resolveModelTarget,
+  validateModelRoutes,
+  validateModelTarget,
+} from "./model-catalog.mjs";
 import { validateArtifactPath } from "./projects.mjs";
 import { resolveTaskProject } from "./registry.mjs";
 
@@ -486,14 +489,17 @@ export class Leader {
     ];
     const leaderEffort = normalizeEffort(leaderConfig.leaderEffort);
     if (leaderEffort && leaderEffort !== "auto") {
-      const option = reasoningOptionFor(
-        provider,
+      const reasoning = reasoningPlanForTarget(
+        this.config,
+        { provider, model, effort: leaderEffort },
         this.config.t3ReasoningOption,
       );
-      args.push(
-        "--option",
-        `${option}=${reasoningValue(model, leaderEffort)}`,
-      );
+      if (reasoning.optionId && reasoning.value) {
+        args.push(
+          "--option",
+          `${reasoning.optionId}=${reasoning.value}`,
+        );
+      }
     }
     const { code, stdout, stderr } = await run(this.config.t3Bin, args, {
       cwd: this.config.cwd,
@@ -670,21 +676,40 @@ export class Leader {
             modelOverride:
               action.modelOverride === true || Boolean(userPreference?.model),
           });
-          const provider = assertT3ProviderId(
-            this.config.forceProvider ||
-              plan.provider ||
-              action.provider ||
-              this.config.t3Provider,
+          const resolution = resolveModelTarget(
+            this.config,
+            {
+              provider:
+                this.config.forceProvider ||
+                plan.provider ||
+                action.provider ||
+                this.config.t3Provider,
+              model: plan.model,
+              effort: plan.effort,
+            },
+            {
+              preferredProviders: [
+                this.config.forceProvider,
+                plan.provider,
+                action.provider,
+                masterFc?.provider,
+                this.config.t3Provider,
+              ],
+            },
           );
-          const targetValidation =
-            adapter === "t3" && plan.model
-              ? validateModelTarget(this.config, {
-                  provider,
-                  model: plan.model,
-                  effort: plan.effort,
-                })
-              : { ok: true, errors: [], warnings: [], suggestions: [] };
-          if (!targetValidation.ok) {
+          let provider = resolution.provider;
+          try {
+            provider = assertT3ProviderId(provider);
+          } catch (error) {
+            applied.push({
+              type: "add_task",
+              ok: false,
+              error: error.message,
+            });
+            continue;
+          }
+          const targetValidation = resolution.validation;
+          if (adapter === "t3" && plan.model && !targetValidation.ok) {
             applied.push({
               type: "add_task",
               ok: false,
@@ -702,10 +727,9 @@ export class Leader {
             projectPath: requested,
             projectId: resolved.project?.id ?? null,
             masterThreadId: masterThreadId || null,
-            model: plan.model,
+            model: resolution.model || plan.model,
             effort: plan.effort,
             provider,
-            reasoningOption: this.config.t3ReasoningOption,
             maxAttempts: this.config.maxAttempts,
             completionToken: action.completionToken
               ? String(action.completionToken).slice(0, 200)

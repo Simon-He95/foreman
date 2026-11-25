@@ -42,6 +42,7 @@ import {
 } from "./model-policy.mjs";
 import {
   availableModelChoices,
+  resolveModelTarget,
   validateModelRoutes,
   validateModelTarget,
 } from "./model-catalog.mjs";
@@ -645,23 +646,35 @@ export function startServer({ db, config, daemon, leader, logger = console }) {
           masterFc,
           modelOverride: body.modelOverride === true || Boolean(body.model),
         });
+        const resolution = resolveModelTarget(
+          config,
+          {
+            provider:
+              config.forceProvider ||
+              plan.provider ||
+              provider ||
+              config.t3Provider,
+            model: plan.model,
+            effort: plan.effort,
+          },
+          {
+            preferredProviders: [
+              config.forceProvider,
+              plan.provider,
+              provider,
+              masterFc?.provider,
+              config.t3Provider,
+            ],
+          },
+        );
         let taskProvider;
         try {
-          taskProvider = assertT3ProviderId(
-            plan.provider || config.forceProvider || provider || null,
-          );
+          taskProvider = assertT3ProviderId(resolution.provider);
         } catch (error) {
           throw httpError(400, error.message);
         }
-        if (adapter === "t3" && plan.model) {
-          const targetValidation = validateModelTarget(config, {
-            provider: taskProvider,
-            model: plan.model,
-            effort: plan.effort,
-          });
-          if (!targetValidation.ok) {
-            throw httpError(400, targetValidation.errors.join("; "));
-          }
+        if (adapter === "t3" && plan.model && !resolution.validation.ok) {
+          throw httpError(400, resolution.validation.errors.join("; "));
         }
         const task = addTask(db, {
           title,
@@ -673,7 +686,7 @@ export function startServer({ db, config, daemon, leader, logger = console }) {
           workerId,
           masterThreadId,
           provider: taskProvider,
-          model: plan.model,
+          model: resolution.model || plan.model,
           effort: plan.effort,
           maxAttempts: Number(body.maxAttempts) || config.maxAttempts,
           completionToken,

@@ -59,9 +59,7 @@ export function contractLabel(task) {
 
 function policyLabel(task) {
   const provider = task.provider ? String(task.provider) : null;
-  const model = task.model
-    ? String(task.model).replace(/^dimcode-api-oauth\//, "")
-    : null;
+  const model = task.model ? String(task.model) : null;
   const effort = task.effort || null;
   return [
     provider ? `provider=${provider}` : null,

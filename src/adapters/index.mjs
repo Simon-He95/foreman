@@ -18,6 +18,7 @@ export function createAdapter(name, config) {
       model: config.t3Model,
       reasoningOption: config.t3ReasoningOption,
       leaseMs: config.t3LeaseMs,
+      config,
     });
   }
   throw new Error(`unknown adapter: ${name}`);

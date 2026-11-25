@@ -23,7 +23,7 @@ Defaults are configuration, not hard requirements:
 {
   "modelFast": "dimcode-api-oauth/deepseek-v4.1-flash",
   "modelStrong": "dimcode-api-oauth/gpt-6.2-astra",
-  "modelCoding": "dimcode-api-oauth/claude-opus-5-5",
+  "modelCoding": "dimcode-api-oauth/gpt-6.2-astra",
   "t3ReasoningOption": "thought_level"
 }
 ```
@@ -48,8 +48,8 @@ table, so it survives later turns and is visible in the next prompt:
       "effort": "max"
     },
     "coding": {
-      "provider": "dim",
-      "model": "dimcode-api-oauth/claude-opus-5-5",
+      "provider": "claudeAgent",
+      "model": "claude-opus-5-5",
       "effort": "max"
     }
   }
@@ -123,16 +123,27 @@ node src/cli.mjs add "review migration" \
 
 ## Provider option names
 
-- DimAgent: `thought_level`; values vary by model. Foreman maps the user-facing
-  `max` to the model's top value (`xhigh` for newer GPT/Claude models, `max` for
-  flash models).
-- Rust DimAgent (`dima`), Claude Agent (`claudeAgent`): `effort`.
-- Codex: `reasoningEffort`.
-- `t3ReasoningOption` is only a fallback for custom providers; built-in ids map
-  automatically per task, so per-task provider overrides stay valid.
+Foreman does not choose the reasoning option id from the provider name. It
+reads the model's `capabilities.optionDescriptors` from T3's provider catalog,
+finds the descriptor with `role: "reasoning"`, and uses that descriptor's id
+and allowed values:
 
-If T3 rejects an option, the daemon records the error on the task. Check
-`orchestrator_capabilities` in T3 for the exact id/value list for a model.
+- DimAgent models currently use `thought_level`; values vary by model.
+- Rust DimAgent (`dima`) and Claude Agent (`claudeAgent`) use `effort`.
+- Codex uses `reasoningEffort`.
+- A new or custom provider can use any descriptor id without a Foreman code
+  change.
+
+Foreman's provider-neutral values (`auto`, `none`, `high`, `max`) are mapped to
+the closest advertised value for that model. For example `max` becomes `max`
+when advertised, `xhigh` when that is the model's ceiling, or is rejected when
+the model has no higher effort value. `auto` omits the option so the provider
+uses its own default. `t3ReasoningOption` is only a fallback when no catalog
+descriptor is available.
+
+If T3 rejects an option, the daemon blocks the task before start when the
+catalog can detect it. Check the model's `capabilities.optionDescriptors` for
+the exact id/value list.
 
 ## FC selection in T3
 
@@ -185,9 +196,11 @@ the `modelFast` / `modelStrong` / `modelCoding` tiers. A task may override the
 worker provider and model; `forceModel` and `forceProvider` remove that override
 path when a deployment needs a fixed fleet.
 
-Foreman does **not** automatically refresh the T3 provider/model catalog. The
-fast/strong/coding slugs are explicit config values (`modelFast`,
-`modelStrong`, `modelCoding`) or environment overrides. If T3 adds, renames, or
-removes a model, update those values and restart Foreman. `foreman models` shows
-the effective catalog; `foreman doctor` does not currently validate every model
-slug. Dynamic discovery from T3 `orchestrator_capabilities` is a roadmap item.
+Foreman reads the T3 provider cache on target resolution, so route and task
+preflight notices model additions/removals without a Foreman restart. The cache
+is a snapshot of T3's capability/auth state, not a live RPC: restart T3 after a
+provider change to refresh it, and treat auth failures as thread-start errors.
+The fast/strong/coding tier slugs remain explicit config values (`modelFast`,
+`modelStrong`, `modelCoding`) or environment overrides. If T3 renames a model,
+update those tier values; a live T3 capability/auth RPC is still a roadmap item.
+`foreman models` shows the effective config and catalog-derived reasoning ids.

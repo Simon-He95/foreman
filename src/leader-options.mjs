@@ -1,11 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
-  EFFORT_LEVELS,
-  normalizeEffort,
-  reasoningOptionFor,
-} from "./model-policy.mjs";
+import { EFFORT_LEVELS, normalizeEffort } from "./model-policy.mjs";
 
 const MEDIA_MODEL = /(seedream|seedance|seed-2|image|video|tts|music|audio|embed|rerank|vision|sora)/i;
 const SKIP_PROVIDERS = new Set(["foreman", "foremanMock", "mock"]);
@@ -26,18 +22,49 @@ function providerMode(provider) {
   return "t3";
 }
 
-function canonicalEfforts(model) {
+function reasoningDescriptor(model) {
   const descriptors = model?.capabilities?.optionDescriptors || [];
-  const descriptor = descriptors.find(
-    (item) =>
-      item.role === "reasoning" ||
-      ["effort", "reasoningEffort", "thought_level"].includes(item.id),
+  return (
+    descriptors.find(
+      (item) =>
+        item.role === "reasoning" ||
+        ["effort", "reasoningEffort", "thought_level"].includes(item.id),
+    ) || null
   );
+}
+
+function reasoningMetadata(model) {
+  const descriptor = reasoningDescriptor(model);
   if (!descriptor) return null;
+  const options = (descriptor.options || [])
+    .map((option) => {
+      const id = String(option.id ?? option.value ?? "").trim();
+      if (!id) return null;
+      return {
+        id,
+        label: String(option.label || id),
+        ...(option.isDefault ? { isDefault: true } : {}),
+      };
+    })
+    .filter(Boolean);
+  if (!options.length) return null;
+  return {
+    id: String(descriptor.id || "reasoning"),
+    label: String(descriptor.label || descriptor.id || "Reasoning"),
+    options,
+    currentValue:
+      descriptor.currentValue === undefined
+        ? null
+        : String(descriptor.currentValue),
+  };
+}
+
+function canonicalEfforts(model) {
+  const reasoning = reasoningMetadata(model);
+  if (!reasoning) return null;
   const efforts = new Set();
-  for (const option of descriptor.options || []) {
-    const value = String(option.id ?? option.value ?? "").toLowerCase();
-    if (!value) continue;
+  for (const option of reasoning.options) {
+    const value = option.id.toLowerCase();
     if (value === "provider-default" || value === "auto") efforts.add("auto");
     else if (["max", "xhigh", "ultra", "ultrathink"].includes(value)) efforts.add("max");
     else if (["high"].includes(value)) efforts.add("high");
@@ -74,7 +101,9 @@ function cacheChoices(config = null) {
     const data = readJson(path.join(caches, file));
     if (!data) continue;
     const provider =
-      data.providerInstanceId || path.basename(file, ".json");
+      data.providerInstanceId ||
+      data.instanceId ||
+      path.basename(file, ".json");
     if (SKIP_PROVIDERS.has(provider)) continue;
     const settings = instances[provider];
     if (settings && settings.enabled === false) continue;
@@ -82,13 +111,20 @@ function cacheChoices(config = null) {
     for (const model of Array.isArray(data.models) ? data.models : []) {
       const slug = String(model.slug || model.modelId || "").trim();
       if (!slug || MEDIA_MODEL.test(slug)) continue;
+      const aliases = Array.isArray(model.aliases)
+        ? model.aliases.map((alias) => String(alias).trim()).filter(Boolean)
+        : [];
       choices.push({
         id: `${provider}::${slug}`,
         provider,
         model: slug,
+        aliases,
         label: `${displayName} / ${model.name || slug}`,
         description: `${provider} · ${slug}`,
         efforts: canonicalEfforts(model),
+        reasoning: reasoningMetadata(model),
+        advertised: true,
+        source: "t3-catalog",
         isCustom: Boolean(model.isCustom),
         providerStatus: data.status || null,
         providerAuth: data.auth?.status || null,
@@ -125,6 +161,8 @@ function explicitChoices(config) {
         model,
         label: String(row.label || `${provider} / ${model}`),
         description: row.description ? String(row.description) : undefined,
+        advertised: false,
+        source: "config",
       };
     })
     .filter(Boolean)
@@ -144,12 +182,33 @@ function defaultProvider(config) {
   return "dim";
 }
 
+/**
+ * Only models T3 actually advertised in its provider cache are authoritative
+ * for preflight. Explicit leaderChoices remain UI/config preferences until T3
+ * confirms them.
+ */
+export function advertisedModelChoices(config) {
+  return cacheChoices(config);
+}
+
 export function leaderChoices(config) {
   const merged = new Map();
   for (const choice of explicitChoices(config)) merged.set(choice.id, choice);
   for (const choice of cacheChoices(config)) {
     const previous = merged.get(choice.id);
-    merged.set(choice.id, previous ? { ...choice, ...previous, efforts: choice.efforts || previous.efforts } : choice);
+    merged.set(
+      choice.id,
+      previous
+        ? {
+            ...choice,
+            ...previous,
+            advertised: true,
+            source: "t3-catalog",
+            efforts: choice.efforts || previous.efforts,
+            reasoning: choice.reasoning || previous.reasoning,
+          }
+        : choice,
+    );
   }
   const choices = [...merged.values()];
   const provider = defaultProvider(config);
@@ -311,8 +370,4 @@ export function leaderProviderSummary(config) {
     default: defaultChoice,
     choices,
   };
-}
-
-export function reasoningOptionForProvider(provider, fallback = null) {
-  return reasoningOptionFor(provider, fallback);
 }

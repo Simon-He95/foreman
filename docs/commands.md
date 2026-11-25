@@ -93,12 +93,13 @@ foreman models
 foreman models --json
 ```
 
-This prints the **effective** catalog after config and environment overrides. It
-does not modify T3. Worker model slugs are intentionally explicit; FC choices are
-discovered from enabled T3 providers (plus `leaderChoices`). Upstream T3 worker
-model additions or removals require updating `modelFast`, `modelStrong`, and
-`modelCoding`, then restarting `foreman up`. FC choices refresh when T3
-refreshes its provider cache; restart T3 after adding/removing a provider.
+This prints the **effective** config and the catalog-derived reasoning option
+ids. It does not modify T3. Worker tier slugs are intentionally explicit; FC
+choices are discovered from enabled T3 providers (plus `leaderChoices`). Route
+and task preflight reads the T3 provider cache, so advertised model changes are
+noticed without a Foreman restart. The cache is a snapshot; restart T3 after
+adding/removing a provider to refresh it. If T3 renames a tier model, update
+`modelFast`, `modelStrong`, or `modelCoding` explicitly.
 The selected FC is persisted per T3 master thread. The output also shows
 `worker routes` when the master or config has a category map (`light`,
 `standard`, `deep`, `coding`, `default`); each route is a provider + model pair.

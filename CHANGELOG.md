@@ -17,6 +17,12 @@ All notable changes to Foreman are documented here. The format follows
   targets before a T3 task starts.
 - Failed tasks that never got a thread are re-planned against the current
   routes on retry, instead of preserving a stale provider/model.
+- Provider/model resolution, reasoning option ids, and effort values are
+  catalog-driven. A bare model slug is accepted only when one advertised
+  provider owns it, or when a preferred provider is known to advertise it.
+- The same preflight runs before local dispatch, worker claim, retry, and the
+  T3 adapter call, so an old invalid queued task cannot start a thread just
+  because it bypassed the dashboard.
 
 - User-directed worker model routes (`workerModelRoutes` / `set_model_routes`)
   keyed by `default`, `light`, `standard`, `deep`, and `coding`, with a
@@ -32,6 +38,9 @@ All notable changes to Foreman are documented here. The format follows
   back to an unrelated provider.
 - Model namespace prefixes such as `dimcode-api-oauth` are rejected as provider
   instance ids before T3 starts.
+- Removed provider-name and model-name switches from the reasoning path. The
+  option id and supported values come from each model's T3 descriptor; the
+  `t3ReasoningOption` value is only a fallback when no catalog is readable.
 
 ## [1.2.1] - 2026-11-25
 

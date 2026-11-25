@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process";
+import { normalizeEffort } from "../model-policy.mjs";
 import {
-  normalizeEffort,
-  reasoningOptionFor,
-  reasoningValue,
-} from "../model-policy.mjs";
+  reasoningPlanForTarget,
+  resolveModelTarget,
+} from "../model-catalog.mjs";
 
 function run(bin, args, { cwd, env, timeoutMs = 120000 } = {}) {
   return new Promise((resolve, reject) => {
@@ -222,6 +222,7 @@ export class T3Adapter {
     model,
     reasoningOption,
     leaseMs,
+    config = null,
   }) {
     this.t3Bin = t3Bin;
     this.projectPath = projectPath;
@@ -231,6 +232,7 @@ export class T3Adapter {
     this.model = model;
     this.reasoningOption = reasoningOption || "effort";
     this.leaseMs = leaseMs;
+    this.config = config;
   }
 
   async call(args, options = {}) {
@@ -252,21 +254,40 @@ export class T3Adapter {
       if (this.worktree && !needsMainTree) {
         args.push("--worktree", this.worktreeBase);
       }
-      const effectiveModel = task.model
+      const requestedModel = task.model
         ? String(task.model).trim()
         : this.model;
-      const provider = task.provider || this.provider;
+      const requestedProvider = task.provider || this.provider;
       const effort = normalizeEffort(task.effort);
+      const resolution = this.config
+        ? resolveModelTarget(
+            this.config,
+            {
+              provider: requestedProvider,
+              model: requestedModel,
+              effort,
+            },
+            { preferredProviders: [requestedProvider, this.config.t3Provider] },
+          )
+        : null;
+      if (requestedModel && resolution && !resolution.validation.ok) {
+        throw new Error(
+          `model target rejected by T3 catalog: ${resolution.validation.errors.join("; ")}`,
+        );
+      }
+      const effectiveModel = resolution?.model || requestedModel;
+      const provider = resolution?.provider || requestedProvider;
       if (provider && effectiveModel) {
         args.push("--provider", provider, "--model", effectiveModel);
-        const reasoningOption = reasoningOptionFor(
-          provider,
+        const reasoning = reasoningPlanForTarget(
+          this.config,
+          { provider, model: effectiveModel, effort },
           task.reasoningOption || this.reasoningOption,
         );
-        if (effort && effort !== "auto" && reasoningOption) {
+        if (reasoning.optionId && reasoning.value) {
           args.push(
             "--option",
-            `${reasoningOption}=${reasoningValue(effectiveModel, effort)}`,
+            `${reasoning.optionId}=${reasoning.value}`,
           );
         }
       }
