@@ -15,7 +15,12 @@ import {
   updateTask,
 } from "./db.mjs";
 import { buildStateCard, ruleReply } from "./state.mjs";
-import { inferUserModelPreference, modelPolicyText, planTaskModel } from "./model-policy.mjs";
+import {
+  inferUserModelPreference,
+  modelPolicyText,
+  normalizeEffort,
+  planTaskModel,
+} from "./model-policy.mjs";
 import { validateArtifactPath } from "./projects.mjs";
 import { resolveTaskProject } from "./registry.mjs";
 
@@ -177,7 +182,7 @@ export class Leader {
       '{"reply":"回答用户当前问题，最多 6 行；状态只在被问时给","actions":[]}',
       "",
       "actions 可选类型：",
-      '- {"type":"add_task","title":"...","brief":"...","priority":50,"project":"项目名","projectPath":"可选路径","model":"可选模型 slug","effort":"auto|none|high|max","completionToken":"DONE","artifactPath":"可选","artifactContains":"可选","requireDiff":false}',
+      '- {"type":"add_task","title":"...","brief":"...","priority":50,"project":"项目名","projectPath":"可选路径","provider":"可选 T3 provider id","model":"可选模型 slug","effort":"auto|none|high|max","completionToken":"DONE","artifactPath":"可选","artifactContains":"可选","requireDiff":false}',
       '- {"type":"reprioritize","taskId":"tsk_...","priority":80}',
       '- {"type":"cancel","taskId":"tsk_..."}',
       '- {"type":"retry","taskId":"tsk_..."}',
@@ -297,6 +302,10 @@ export class Leader {
       const model = String(this.config.leaderModel).trim();
       args.push("--model", model.includes("/") ? model.slice(model.lastIndexOf("/") + 1) : model);
     }
+    const leaderEffort = normalizeEffort(this.config.leaderEffort);
+    if (leaderEffort && leaderEffort !== "auto") {
+      args.push("--effort", leaderEffort);
+    }
     const { code, stdout, stderr } = await run(
       this.config.dimBin,
       args,
@@ -382,7 +391,10 @@ export class Leader {
             projectId: resolved.project?.id ?? null,
             model: plan.model,
             effort: plan.effort,
-            provider: this.config.t3Provider,
+            provider:
+              this.config.forceProvider ||
+              action.provider ||
+              this.config.t3Provider,
             reasoningOption: this.config.t3ReasoningOption,
             maxAttempts: this.config.maxAttempts,
             completionToken: action.completionToken

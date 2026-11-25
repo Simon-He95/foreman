@@ -501,6 +501,9 @@ export function startServer({ db, config, daemon, leader, logger = console }) {
         const workerId = body.workerId
           ? String(body.workerId).trim().slice(0, 200)
           : null;
+        const provider = body.provider
+          ? String(body.provider).trim().slice(0, 120)
+          : null;
         const brief = String(body.brief || title);
         const plan = planTaskModel(config, {
           title,
@@ -517,6 +520,7 @@ export function startServer({ db, config, daemon, leader, logger = console }) {
           projectPath,
           projectId: resolvedProject.project?.id ?? null,
           workerId,
+          provider: config.forceProvider || provider || null,
           model: plan.model,
           effort: plan.effort,
           maxAttempts: Number(body.maxAttempts) || config.maxAttempts,

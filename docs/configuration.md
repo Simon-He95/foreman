@@ -26,6 +26,7 @@ node src/cli.mjs init
 | `authToken` | `FOREMAN_TOKEN` | dashboard/API bearer token |
 | `leaderMode` | `FOREMAN_LEADER` | `rule`, `dim`, `codex`, `claude` |
 | `leaderModel` | `FOREMAN_LEADER_MODEL` | optional leader model (bare id for legacy `dim`) |
+| `leaderEffort` | `FOREMAN_LEADER_EFFORT` | leader effort for backends that support it |
 | `leaderTickMs` | `FOREMAN_LEADER_TICK_MS` | automatic wake interval |
 
 ## T3
@@ -42,6 +43,8 @@ node src/cli.mjs init
 | `modelFast` | `FOREMAN_MODEL_FAST` | light/standard model |
 | `modelStrong` | `FOREMAN_MODEL_STRONG` | deep/research model |
 | `modelCoding` | `FOREMAN_MODEL_CODING` | coding/refactor model |
+| `forceModel` | `FOREMAN_FORCE_MODEL` | optional hard worker-model lock; ignores task overrides |
+| `forceProvider` | `FOREMAN_FORCE_PROVIDER` | optional hard worker-provider lock; ignores task overrides |
 
 The leader model is independent from workers. For example, a smart leader and
 cheaper workers:
@@ -58,10 +61,21 @@ cheaper workers:
 }
 ```
 
-To make **all** workers use one model, set `modelFast`, `modelStrong`, and
-`modelCoding` to the same slug. Explicit task/leader overrides can still choose
-another model. There is not yet a per-task provider field; `t3Provider` applies
-to all worker threads.
+To make **all** workers use one model without allowing overrides, set
+`forceModel`. To use one provider without allowing per-task overrides, set
+`forceProvider`. Without the force locks, `modelFast` / `modelStrong` /
+`modelCoding` are the tier defaults and `t3Provider` is the default worker
+provider.
+
+Per-task overrides:
+
+```bash
+foreman add "review this PR" --provider codex --model gpt-6-astra
+```
+
+The API accepts `provider` and `model` in `POST /api/tasks`; the leader can emit
+`provider` in an `add_task` action. The T3 adapter and native delegation use the
+task's provider, falling back to `t3Provider`.
 
 ## Native lineage
 

@@ -68,6 +68,12 @@ If T3 rejects an option, the daemon records the error on the task. Check
 
 ## Upstream provider/model changes
 
+The **leader** has its own model and effort (`leaderMode`, `leaderModel`,
+`leaderEffort`). The **workers** use `t3Provider`, `t3Model`, and the
+`modelFast` / `modelStrong` / `modelCoding` tiers. A task may override the worker
+provider and model; `forceModel` and `forceProvider` remove that override path
+when a deployment needs a fixed fleet.
+
 Foreman does **not** automatically refresh the T3 provider/model catalog. The
 fast/strong/coding slugs are explicit config values (`modelFast`,
 `modelStrong`, `modelCoding`) or environment overrides. If T3 adds, renames, or

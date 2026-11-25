@@ -96,6 +96,19 @@ export function planTaskModel(
   }
   const catalog = modelCatalog(config);
   const tier = classifyTask({ title, brief });
+  const forcedModel = config.forceModel ? String(config.forceModel).trim() : null;
+  if (forcedModel) {
+    return {
+      model: forcedModel,
+      effort: normalizeEffort(effort) || {
+        light: "none",
+        standard: "auto",
+        deep: "max",
+        coding: "max",
+      }[tier],
+      tier,
+    };
+  }
   const base = {
     light: { model: catalog.fast, effort: "none" },
     standard: { model: catalog.fast, effort: "auto" },

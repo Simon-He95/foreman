@@ -212,7 +212,7 @@
     .contract-row {
       grid-column: 1 / -1;
       display: grid;
-      grid-template-columns: 1fr 2fr;
+      grid-template-columns: 1fr 1fr 1fr;
       gap: 10px;
       padding-top: 10px;
       border-top: 1px solid var(--line);
@@ -481,6 +481,10 @@
         </div>
         <div class="contract-row">
           <div class="field">
+            <label for="t-provider">Provider（可选）</label>
+            <input id="t-provider" placeholder="例如 dima / codex；留空用全局配置" />
+          </div>
+          <div class="field">
             <label for="t-token">完成 token（可选）</label>
             <input id="t-token" placeholder="DONE；必须单独成行" />
           </div>
@@ -681,6 +685,7 @@
       const metaChildren = [
         metaItem("id", task.id),
         metaItem("exec", task.adapter),
+        ...(task.provider ? [metaItem("provider", task.provider)] : []),
         metaItem("project", task.projectName ? `${task.projectName} · ${task.projectShort}` : task.projectShort),
         task.thread_link
           ? el("span", {}, "thread ", el("a", { href: task.thread_link, target: "_blank", rel: "noreferrer", text: "打开线程" }))
@@ -961,8 +966,10 @@
         if (match) payload.project = match.id;
         else payload.projectPath = projectValue;
       }
+      const provider = $("t-provider").value.trim();
       const token = $("t-token").value.trim();
       const artifact = $("t-artifact").value.trim();
+      if (provider) payload.provider = provider;
       if (token) payload.completionToken = token;
       if (artifact) payload.artifactPath = artifact;
       const response = await apiFetch("/api/tasks", {
@@ -978,6 +985,7 @@
       }
       $("t-title").value = "";
       $("t-brief").value = "";
+      $("t-provider").value = "";
       $("t-token").value = "";
       $("t-artifact").value = "";
       $("add-form").classList.add("hidden");

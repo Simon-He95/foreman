@@ -304,6 +304,16 @@ async function commandInit(flags) {
               )),
           ).trim() || null
         : null;
+    const leaderEffort =
+      mode === "t3" && leaderMode !== "rule"
+        ? String(
+            flags["leader-effort"] ||
+              (await ask(
+                "Leader effort (auto|none|high|max)",
+                "high",
+              )),
+          ).trim() || null
+        : null;
     const dataDir = path.resolve(
       cwd,
       String(flags["data-dir"] || (await ask("Data directory", ".foreman"))),
@@ -346,11 +356,14 @@ async function commandInit(flags) {
       modelFast,
       modelStrong,
       modelCoding,
+      forceModel: flags["force-model"] ? String(flags["force-model"]).trim() : null,
+      forceProvider: flags["force-provider"] ? String(flags["force-provider"]).trim() : null,
       t3ReasoningOption: mode === "t3" ? (provider === "dim" ? "thought_level" : "effort") : null,
       t3Worktree: false,
       concurrency: Number(flags.concurrency || 2),
       leaderMode,
       leaderModel,
+      leaderEffort,
       leaderTickMs: 3000,
       port,
       allowedProjectRoots: [
@@ -368,7 +381,9 @@ async function commandInit(flags) {
     console.log(`  adapter   ${mode}`);
     console.log(`  project   ${projectPath}`);
     console.log(`  data      ${dataDir}`);
-    console.log(`  leader    ${leaderMode}${leaderModel ? ` / ${leaderModel}` : ""}`);
+    console.log(
+      `  leader    ${leaderMode}${leaderModel ? ` / ${leaderModel}` : ""}${leaderEffort ? ` / effort ${leaderEffort}` : ""}`,
+    );
     if (mode === "t3") {
       console.log(`  provider  ${provider}`);
       console.log(`  model     ${model}`);
@@ -444,6 +459,7 @@ async function commandAdd(flags, positional) {
     projectPath,
     projectId: resolved.project?.id ?? null,
     permissionMode: flags.permission || null,
+    provider: config.forceProvider || flags.provider || null,
     model: plan.model,
     effort: plan.effort,
     maxAttempts: Number(flags["max-attempts"]) || config.maxAttempts,
@@ -471,9 +487,12 @@ async function commandModels(flags) {
       leader: {
         mode: config.leaderMode,
         model: config.leaderModel || null,
+        effort: config.leaderEffort || null,
       },
       provider: config.t3Provider || null,
       reasoningOption: config.t3ReasoningOption || null,
+      forceProvider: config.forceProvider || null,
+      forceModel: config.forceModel || null,
       fast: catalog.fast,
       strong: catalog.strong,
       coding: catalog.coding,
@@ -483,8 +502,11 @@ async function commandModels(flags) {
       console.log(JSON.stringify(payload, null, 2));
       return;
     }
-    console.log(`leader            ${payload.leader.mode}${payload.leader.model ? ` / ${payload.leader.model}` : ""}`);
+    console.log(
+      `leader            ${payload.leader.mode}${payload.leader.model ? ` / ${payload.leader.model}` : ""}${payload.leader.effort ? ` / effort ${payload.leader.effort}` : ""}`,
+    );
     console.log(`provider          ${payload.provider || "(not set)"}`);
+    console.log(`force             ${payload.forceProvider || "-"} / ${payload.forceModel || "-"}`);
     console.log(`reasoning option  ${payload.reasoningOption || "(not set)"}`);
     console.log(`fast              ${payload.fast || "(provider default)"}`);
     console.log(`strong            ${payload.strong || "(provider default)"}`);
@@ -1348,8 +1370,9 @@ function usage() {
   console.log(`foreman — a durable leader for agent fleets
 
 usage:
-  foreman init [--yes] [--project path] [--adapter mock|t3] [--provider dim] [--model slug] [--leader dim] [--leader-model slug] [--data-dir .foreman] [--port 3777] [--register] [--force]
+  foreman init [--yes] [--project path] [--adapter mock|t3] [--provider dim] [--model slug] [--leader dim] [--leader-model slug] [--leader-effort auto|none|high|max] [--force-model slug] [--force-provider id] [--data-dir .foreman] [--port 3777] [--register] [--force]
   foreman add <title> --brief "..." [--priority 50] [--adapter mock|t3] [--project name|path]
+                [--provider id] [--model slug] [--effort auto|none|high|max]
                 [--done-token DONE] [--artifact path] [--artifact-contains text] [--require-diff]
   foreman project list
   foreman project add <name> --path <dir> [--adapter mock|t3]

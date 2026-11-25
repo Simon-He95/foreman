@@ -146,6 +146,37 @@ test("model policy chooses by difficulty and honors explicit overrides", () => {
   assert.equal(coding.model, "dim/coding");
   assert.equal(coding.effort, "max");
 
+  const forced = testConfig(tempDir(), {
+    t3Provider: "dim",
+    t3Model: "dim/fast",
+    forceModel: "dim/locked",
+    forceProvider: "dima",
+  });
+  const forcedPlan = planTaskModel(forced, {
+    title: "修复登录页 bug",
+    brief: "改代码",
+    model: "dim/coding",
+    effort: "max",
+    adapter: "t3",
+  });
+  assert.equal(forcedPlan.model, "dim/locked");
+
+  const db = openDb(forced.dbPath);
+  try {
+    const task = addTask(db, {
+      title: "provider persisted",
+      brief: "provider task",
+      adapter: "t3",
+      projectPath: forced.projectPath,
+      provider: "dima",
+      model: "dim/locked",
+      effort: "max",
+    });
+    assert.equal(task.provider, "dima");
+  } finally {
+    db.close();
+  }
+
   const explicit = planTaskModel(config, {
     title: "随便做点",
     brief: "普通任务",

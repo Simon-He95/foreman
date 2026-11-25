@@ -31,6 +31,7 @@ text; this page is the reference.
 --priority 0..100
 --project name|path
 --adapter mock|t3
+--provider id
 --model slug
 --effort auto|none|high|max
 --max-attempts N
@@ -51,6 +52,9 @@ Flags override environment variables and `foreman.config.json`. The main set:
 --concurrency N
 --leader rule|claude|codex|dim
 --leader-model slug
+--leader-effort auto|none|high|max
+--force-provider id
+--force-model slug
 --port N
 --host address
 --token secret

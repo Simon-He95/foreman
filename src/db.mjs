@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   worker_id TEXT,
   attempt_id TEXT,
   permission_mode TEXT,
+  provider TEXT,
   model TEXT,
   effort TEXT,
   completion_token TEXT,
@@ -126,6 +127,7 @@ const TASK_FIELDS = new Set([
   "worker_id",
   "attempt_id",
   "permission_mode",
+  "provider",
   "model",
   "effort",
   "completion_token",
@@ -153,7 +155,7 @@ function ensureColumn(db, table, column, definition) {
   }
 }
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 // Additive migrations only. The schema is created with CREATE IF NOT EXISTS,
 // then each migration brings older ledgers up to the current shape. Never
@@ -177,6 +179,12 @@ const MIGRATIONS = [
       ensureColumn(db, "workers", "token_hint", "TEXT");
       ensureColumn(db, "workers", "token_created_at", "INTEGER");
       ensureColumn(db, "workers", "protocol_version", "INTEGER");
+    },
+  },
+  {
+    version: 2,
+    up(db) {
+      ensureColumn(db, "tasks", "provider", "TEXT");
     },
   },
 ];
@@ -458,6 +466,9 @@ export function addTask(db, input) {
   const artifactContains = input.artifactContains
     ? String(input.artifactContains).slice(0, 4000)
     : null;
+  const provider = input.provider
+    ? String(input.provider).trim().slice(0, 120)
+    : null;
   const model = input.model ? String(input.model).trim().slice(0, 200) : null;
   const effort = input.effort ? String(input.effort).trim().slice(0, 40) : null;
   const id = input.id || newId("tsk");
@@ -469,11 +480,11 @@ export function addTask(db, input) {
   db.prepare(
     `INSERT INTO tasks
       (id, parent_id, title, brief, status, priority, adapter, project_id,
-       project_path, worker_id, permission_mode, model, effort, completion_token, artifact_path,
+       project_path, worker_id, permission_mode, provider, model, effort, completion_token, artifact_path,
        artifact_contains, require_diff, thread_id, attempts, max_attempts,
        lease_until, not_before, heartbeat_at, last_polled_at, result, error,
        created_at, updated_at, started_at, finished_at)
-     VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?,
+     VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?,
              NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, NULL, NULL)`,
   ).run(
     id,
@@ -486,6 +497,7 @@ export function addTask(db, input) {
     String(input.projectPath || process.cwd()),
     input.workerId ?? null,
     input.permissionMode ?? null,
+    provider,
     model,
     effort,
     completionToken,
@@ -500,6 +512,7 @@ export function addTask(db, input) {
     title,
     priority,
     adapter: input.adapter || "mock",
+    provider,
     model,
     effort,
   });

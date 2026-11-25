@@ -4,19 +4,27 @@ All notable changes to Foreman are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.2.0] - 2026-11-25
 
 ### Added
 
-- `leaderModel` is passed to the legacy `dim exec` leader backend.
-- `foreman init --leader-model` and `foreman models` expose the master/leader
-  model separately from worker model tiers.
+- `leaderModel` and `leaderEffort` are passed to the legacy `dim exec` leader
+  backend; `foreman init --leader-model/--leader-effort` and `foreman models`
+  expose the master/leader policy separately from worker tiers.
+- Per-task `provider` selection through CLI `--provider`, `POST /api/tasks`,
+  task cards, and leader `add_task` actions.
+- `forceModel` / `forceProvider` hard locks for deployments that require every
+  worker thread to use one model/provider.
+- T3 provider registration for the Rust DimAgent alpha (`dima`) and a dedicated
+  guide (`docs/dima.md`).
 
 ### Notes
 
-- `t3Provider` applies to all worker threads; per-task provider selection is
-  still future work. `modelFast` / `modelStrong` / `modelCoding` can be pinned to
-  one model for a uniform worker fleet.
+- `t3Provider` remains the default worker provider; per-task provider overrides
+  are used by the T3 adapter and native lineage.
+- The T3 master thread's model selector does not control the Foreman leader;
+  configure `leaderModel` / `leaderEffort` in Foreman.
+- `forceModel` / `forceProvider` intentionally ignore explicit task overrides.
 
 ## [1.1.0] - 2026-11-25
 

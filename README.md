@@ -8,7 +8,7 @@
 [![npm](https://img.shields.io/npm/v/foreman-ops.svg)](https://www.npmjs.com/package/foreman-ops)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.5-339933.svg)](package.json)
-[![Status: 1.0](https://img.shields.io/badge/status-1.0-2f6b4f.svg)](#status)
+[![Status: 1.2](https://img.shields.io/badge/status-1.2-2f6b4f.svg)](#status)
 
 You talk to one leader. The leader keeps a task ledger, a daemon leases work to
 worker threads, and every completion wakes the leader with a state card built
@@ -277,9 +277,14 @@ foreman add "Audit the payment callback" \
   --effort max
 ```
 
+The **leader** has an independent `leaderMode` / `leaderModel` /
+`leaderEffort`; worker threads use `t3Provider`, `t3Model`, and the
+fast/strong/coding tiers. A task can override provider/model; `forceModel` and
+`forceProvider` are available when a deployment needs a fixed worker fleet.
 Check the effective values with `foreman models`. See
 [Models and effort](docs/models-and-effort.md). Model slugs are explicit config;
-Foreman does not yet auto-refresh the upstream T3 model catalog.
+Foreman does not yet auto-refresh the upstream T3 model catalog. The T3 master
+thread's model selector is not the leader model; set it in Foreman config.
 
 ## Documentation
 
@@ -312,7 +317,7 @@ See [SECURITY.md](SECURITY.md) and [docs/security.md](docs/security.md).
 
 ## Status
 
-Foreman is **1.0**. The ledger, leases, retries, completion contracts, mock
+Foreman is **1.2**. The ledger, leases, retries, completion contracts, mock
 adapter, T3 adapter, dashboard, worker mode, native lineage path, schema
 migrations, and macOS CI are implemented and covered by the test suite
 (`npm test`). The real T3 + DimAgent path has been exercised end-to-end on the

@@ -29,7 +29,7 @@ worker model.
 
 ## Status and limits
 
-Foreman is 1.0. The ledger, leases, retries, completion contracts, mock and
+Foreman is 1.2. The ledger, leases, retries, completion contracts, mock and
 T3 adapters, dashboard, workers, native lineage, schema migrations, and macOS
 CI are implemented and covered by `npm test`. The supported real path is T3 Code
 + a T3 ACP provider; DimAgent is the reference provider.

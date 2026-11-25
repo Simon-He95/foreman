@@ -251,9 +251,10 @@ export class T3Adapter {
       const effectiveModel = task.model
         ? String(task.model).trim()
         : this.model;
+      const provider = task.provider || this.provider;
       const effort = normalizeEffort(task.effort);
-      if (this.provider && effectiveModel) {
-        args.push("--provider", this.provider, "--model", effectiveModel);
+      if (provider && effectiveModel) {
+        args.push("--provider", provider, "--model", effectiveModel);
         if (effort && effort !== "auto" && this.reasoningOption) {
           args.push(
             "--option",
