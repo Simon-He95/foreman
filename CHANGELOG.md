@@ -4,6 +4,13 @@ All notable changes to Foreman are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [0.1.2] - 2026-11-25
+
+### Fixed
+
+- Pass the leader prompt to `dim exec` over stdin instead of argv. Large
+  structured prompts can otherwise be rejected as an unknown argument.
+
 ## [0.1.1] - 2026-11-25
 
 ### Changed

@@ -19,15 +19,16 @@ import { inferUserModelPreference, modelPolicyText, planTaskModel } from "./mode
 import { validateArtifactPath } from "./projects.mjs";
 import { resolveTaskProject } from "./registry.mjs";
 
-function run(bin, args, { cwd, env, timeoutMs = 120000 } = {}) {
+function run(bin, args, { cwd, env, timeoutMs = 120000, input = null } = {}) {
   return new Promise((resolve, reject) => {
     const childEnv = { ...process.env, ...env };
     delete childEnv.FOREMAN_TOKEN;
     const child = spawn(bin, args, {
       cwd,
       env: childEnv,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: [input === null ? "ignore" : "pipe", "pipe", "pipe"],
     });
+    if (input !== null) child.stdin.end(String(input));
     let stdout = "";
     let stderr = "";
     let settled = false;
@@ -291,10 +292,11 @@ export class Leader {
     fs.mkdirSync(workspace, { recursive: true });
     const { code, stdout, stderr } = await run(
       this.config.dimBin,
-      ["exec", prompt],
+      ["exec"],
       {
         cwd: workspace,
         timeoutMs: this.config.leaderTimeoutMs,
+        input: prompt,
       },
     );
     if (code !== 0) {
