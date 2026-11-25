@@ -65,6 +65,7 @@
     "t3": "^0.1.11"
   },
   "devDependencies": {
-    "@openai/codex": "^0.172.0"
+    "@openai/codex": "^0.172.0",
+    "bumpp": "^12.3.0"
   }
 }

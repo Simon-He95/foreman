@@ -14,10 +14,8 @@
  * There is no build step: Foreman is plain ESM plus static files.
  *
  * Usage:
- *   npm run release                 # patch
- *   npm run release -- --minor
- *   npm run release -- --major
- *   npm run release -- --version 0.2.0
+ *   npm run release                 # bumpp asks for patch/minor/major/custom
+ *   npm run release -- --release 0.2.0
  *   npm run release -- --dry-run
  *   npm run release -- --no-git
  *   npm run release -- --otp 123456
@@ -114,9 +112,14 @@ function registryVersion(name) {
 }
 
 if (has("--help") || has("-h")) {
-  console.log(`Usage: npm run release -- [--patch|--minor|--major|--version X] [options]
+  console.log(`Usage: npm run release [options]
+
+By default bumpp asks for the version (patch / minor / major / custom), then
+the script publishes and commits the release.
 
 Options:
+  --release X     release type or explicit version (skip the bumpp prompt)
+  --version X     alias for --release
   --dry-run       test and pack, do not bump or publish
   --skip-tests    skip the local test run
   --no-git        publish without commit/tag/push
@@ -131,16 +134,13 @@ No build step is required.`);
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
 const name = pkg.name;
 const current = pkg.version;
-const explicitVersion = value("--version");
-const bump = explicitVersion
-  ? explicitVersion
-  : has("--major")
-    ? "major"
-    : has("--minor")
-      ? "minor"
-      : "patch";
+const releaseArg = value("--release") || value("--version");
 const tag = value("--tag") || "latest";
 const dryRun = has("--dry-run");
+
+if (!releaseArg && !process.stdin.isTTY && !dryRun) {
+  fail("pass --release <type|version> when stdin is not a terminal");
+}
 
 if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(current)) {
   fail(`package.json version is not semver: ${current}`);
@@ -169,12 +169,12 @@ const whoami = run("npm", ["whoami", "--registry", REGISTRY], {
 if (whoami.status !== 0) {
   fail("npm is not authenticated; run `npm login --registry https://registry.npmjs.org/`");
 }
-console.log(`\nrelease: ${name} ${current} -> ${bump} (${String(whoami.stdout).trim()})`);
+console.log(`\nrelease: ${name} ${current} -> ${releaseArg || "bumpp prompt"} (${String(whoami.stdout).trim()})`);
 
 if (dryRun) {
   if (!has("--skip-tests")) run("npm", ["test"]);
   run("npm", ["pack", "--dry-run"]);
-  console.log(`\nrelease: dry run complete; would publish ${name}@${bump}.`);
+  console.log(`\nrelease: dry run complete; would publish ${name}@${releaseArg || "the version chosen by bumpp"}.`);
   process.exit(0);
 }
 
@@ -182,14 +182,17 @@ if (!has("--skip-tests")) {
   run("npm", ["test"]);
 }
 
-run(
-  "npm",
-  ["version", bump, "--no-git-tag-version"],
-  { capture: true, allowFail: false },
-);
+const bumppArgs = ["--no-commit", "--no-tag", "--no-push", "--git-check"];
+if (releaseArg) bumppArgs.push("--release", releaseArg, "--yes");
+run("bumpp", bumppArgs);
+run("npm", ["install", "--package-lock-only", "--ignore-scripts"], {
+  capture: true,
+  allowFail: false,
+});
 const nextVersion = JSON.parse(
   fs.readFileSync(path.join(ROOT, "package.json"), "utf8"),
 ).version;
+if (nextVersion === current) fail("bumpp did not change the version");
 console.log(`\nrelease: version ${current} -> ${nextVersion}`);
 
 const otp = await promptOtp();

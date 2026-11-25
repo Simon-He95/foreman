@@ -20,13 +20,14 @@ Use these values for the repository settings; they are the canonical copy:
 The normal release is one command:
 
 ```bash
-npm run release -- --patch
+npm run release
 ```
 
-It checks a clean `main`, runs tests, bumps `package.json` / `package-lock.json`,
+`bumpp` asks whether this is patch / minor / major / custom. The script then
+checks a clean `main`, runs tests, bumps `package.json` / `package-lock.json`,
 publishes to npm, verifies the registry, then commits, tags, and pushes. npm
-will ask for a 2FA OTP once; the script does not bypass account security. Use
-`npm run release -- --minor` or `--major` for a larger bump.
+will ask for a 2FA OTP once; the script does not bypass account security. For
+non-interactive use, pass `--release patch` (or another version).
 
 Non-mutating check:
 
