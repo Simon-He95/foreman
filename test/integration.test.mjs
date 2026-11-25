@@ -296,6 +296,13 @@ test("FC leader choices expose provider models and per-provider effort", () => {
       configOptions.configOptions[1].options.map((option) => option.value),
       ["none", "high", "max"],
     );
+    const modelMeta = configOptions.models.availableModels.find(
+      (model) => model.modelId === "dima::deepseek-v4.1-flash",
+    )?._meta;
+    assert.deepEqual(
+      modelMeta.reasoningEfforts.map((effort) => effort.value),
+      ["none", "high", "max"],
+    );
     const override = normalizeLeaderOverride(
       { provider: "dima", model: "deepseek-v4.1-flash", effort: "high" },
       config,

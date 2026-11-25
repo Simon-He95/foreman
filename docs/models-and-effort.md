@@ -88,6 +88,9 @@ leader providers/models/efforts.
 - Effort values are derived from the selected provider/model where the T3
   provider exposes option descriptors; for dima DeepSeek V4.1 Flash that is
   `none`, `high`, or `max`, not the generic T3 labels.
+- The Foreman ACP session advertises `availableModels[]._meta.reasoningEfforts`
+  so T3 keeps a per-model effort picker instead of applying the first model's
+  effort list to every model. A T3 restart is required to reload this metadata.
 - Other registered providers (including Codex, Claude Agent, and custom
   providers) are executed through a T3 leader thread, so their T3 provider
   authentication, model catalog, and reasoning option id are honored.

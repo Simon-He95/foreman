@@ -246,9 +246,31 @@ export function leaderConfigOptions(config, currentInput = null) {
       current.effort,
     ]),
   ];
+  const models = {
+    currentModelId: `${current.provider}::${current.model}`,
+    availableModels: options.choices.map((choice) => {
+      const efforts = choice.efforts || EFFORT_LEVELS;
+      const currentEffort = efforts.includes(current.effort)
+        ? current.effort
+        : efforts[0] || "auto";
+      return {
+        modelId: choice.id,
+        name: choice.label,
+        description: choice.description,
+        _meta: {
+          reasoningEfforts: efforts.map((effort) => ({
+            value: effort,
+            label: effort,
+          })),
+          reasoningEffort: currentEffort,
+        },
+      };
+    }),
+  };
   return {
     options,
     current,
+    models,
     configOptions: [
       {
         id: "model",

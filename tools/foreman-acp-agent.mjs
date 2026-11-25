@@ -578,8 +578,8 @@ async function handle(message) {
       params?.config?.model ||
       null;
     if (selected) sessionLeader(session, selected);
-    const { configOptions } = leaderOptions(session);
-    reply(id, { sessionId, configOptions });
+    const { configOptions, models } = leaderOptions(session);
+    reply(id, { sessionId, configOptions, models });
     return;
   }
 
@@ -596,8 +596,8 @@ async function handle(message) {
     sessions.set(sessionId, session);
     const selected = params?._meta?.selectedModel || null;
     if (selected) sessionLeader(session, selected);
-    const { configOptions } = leaderOptions(session);
-    reply(id, { configOptions });
+    const { configOptions, models } = leaderOptions(session);
+    reply(id, { configOptions, models });
     return;
   }
 
@@ -614,8 +614,8 @@ async function handle(message) {
     sessions.set(sessionId, session);
     const selected = params?._meta?.selectedModel || null;
     if (selected) sessionLeader(session, selected);
-    const { configOptions } = leaderOptions(session);
-    reply(id, { configOptions });
+    const { configOptions, models } = leaderOptions(session);
+    reply(id, { configOptions, models });
     return;
   }
 

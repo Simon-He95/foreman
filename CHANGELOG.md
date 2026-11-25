@@ -12,6 +12,8 @@ All notable changes to Foreman are documented here. The format follows
   (`none`, `high`, `max`) instead of generic T3 effort labels.
 - Foreman FC effort options are derived from the selected provider/model
   capabilities instead of always exposing the global effort vocabulary.
+- Foreman advertises per-model reasoning-effort metadata in ACP so T3 updates
+  the effort picker when switching FC models.
 - Restarting T3 refreshes the provider/model option descriptors.
 
 ## [1.2.0] - 2026-11-25
