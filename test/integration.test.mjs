@@ -19,6 +19,8 @@ import {
   appendInbox,
   backupDb,
   compactDb,
+  SCHEMA_VERSION,
+  schemaVersion,
   consumeInbox,
   counts,
   dashboardTasks,
@@ -1704,6 +1706,35 @@ test("dashboardTasks keeps active tasks even when terminal history is longer", (
     assert.equal(rows.filter((task) => task.status === "done").length, 10);
   } finally {
     db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("schema version is recorded and migrations are idempotent", () => {
+  const dir = tempDir();
+  const db = openDb(path.join(dir, "ledger.db"));
+  try {
+    assert.equal(schemaVersion(db), SCHEMA_VERSION);
+    const project = addProject(db, { name: "schema", path: dir });
+    const task = addTask(db, {
+      title: "schema survival",
+      brief: "must survive a migration",
+      projectId: project.id,
+      projectPath: dir,
+      adapter: "mock",
+    });
+    db.exec("PRAGMA user_version = 0");
+  } finally {
+    db.close();
+  }
+  const reopened = openDb(path.join(dir, "ledger.db"));
+  try {
+    assert.equal(schemaVersion(reopened), SCHEMA_VERSION);
+    assert.equal(getTask(reopened, "tsk_missing"), null);
+    const rows = reopened.prepare("SELECT title FROM tasks").all();
+    assert.ok(rows.some((row) => row.title === "schema survival"));
+  } finally {
+    reopened.close();
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });

@@ -71,6 +71,6 @@ If T3 rejects an option, the daemon records the error on the task. Check
 Foreman does **not** automatically refresh the T3 provider/model catalog. The
 fast/strong/coding slugs are explicit config values (`modelFast`,
 `modelStrong`, `modelCoding`) or environment overrides. If T3 adds, renames, or
-removes a model, update those values and restart Foreman; `foreman doctor` does
-not currently validate every model slug. Dynamic discovery from T3
-`orchestrator_capabilities` is a roadmap item.
+removes a model, update those values and restart Foreman. `foreman models` shows
+the effective catalog; `foreman doctor` does not currently validate every model
+slug. Dynamic discovery from T3 `orchestrator_capabilities` is a roadmap item.

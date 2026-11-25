@@ -24,6 +24,8 @@ import {
   openDb,
   recentChat,
   revokeWorkerToken,
+  SCHEMA_VERSION,
+  schemaVersion,
   setMeta,
   setWorkerStatus,
   setWorkerToken,
@@ -31,7 +33,7 @@ import {
   upsertWorker,
 } from "./db.mjs";
 import { Leader, LeaderLoop } from "./leader.mjs";
-import { planTaskModel } from "./model-policy.mjs";
+import { modelCatalog, planTaskModel } from "./model-policy.mjs";
 import { notifyMaster } from "./notifier.mjs";
 import { validateArtifactPath } from "./projects.mjs";
 import {
@@ -448,6 +450,34 @@ async function commandAdd(flags, positional) {
   });
   printTask(task);
   close(db);
+}
+
+async function commandModels(flags) {
+  const { config, db } = open(overridesFromFlags(flags));
+  try {
+    const catalog = modelCatalog(config);
+    const payload = {
+      provider: config.t3Provider || null,
+      reasoningOption: config.t3ReasoningOption || null,
+      fast: catalog.fast,
+      strong: catalog.strong,
+      coding: catalog.coding,
+      note: "Explicit config; upstream T3 model changes require a config update and restart.",
+    };
+    if (flags.json) {
+      console.log(JSON.stringify(payload, null, 2));
+      return;
+    }
+    console.log(`provider          ${payload.provider || "(not set)"}`);
+    console.log(`reasoning option  ${payload.reasoningOption || "(not set)"}`);
+    console.log(`fast              ${payload.fast || "(provider default)"}`);
+    console.log(`strong            ${payload.strong || "(provider default)"}`);
+    console.log(`coding            ${payload.coding || "(provider default)"}`);
+    console.log("");
+    console.log("source: foreman.config.json / environment; not auto-refreshed from T3");
+  } finally {
+    close(db);
+  }
 }
 
 async function commandStatus(flags) {
@@ -1051,6 +1081,11 @@ async function commandDoctor(flags) {
   checks.push(["node", process.version, true]);
   checks.push(["node:sqlite", "available", true]);
   checks.push([
+    "db schema",
+    `${schemaVersion(db)} (expected ${SCHEMA_VERSION})`,
+    schemaVersion(db) === SCHEMA_VERSION,
+  ]);
+  checks.push([
     "t3 bin",
     config.t3Bin,
     config.t3Bin !== "t3" && fs.existsSync(config.t3Bin),
@@ -1315,6 +1350,7 @@ usage:
   foreman worker revoke <id>
   foreman worker service <id> [--control http://127.0.0.1:3777] [--worker-token-file path]
   foreman status [--json]
+  foreman models [--json]
   foreman ask "现在什么情况？"
   foreman demo [--duration 25]
   foreman doctor
@@ -1365,6 +1401,9 @@ try {
       break;
     case "status":
       await commandStatus(flags);
+      break;
+    case "models":
+      await commandModels(flags);
       break;
     case "ask":
       await commandAsk(flags, positional);

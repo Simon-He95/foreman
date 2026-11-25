@@ -17,6 +17,7 @@ worker model.
   mock control plane, or real T3 setup in 10–20 minutes
 - [Design](../DESIGN.md) — principles, non-goals, runtime topology, module map
 - [Concepts](concepts.md) — master, workers, ledger, lineage, effort
+- [Commands](commands.md) — CLI, task flags, and model catalog
 - [Configuration](configuration.md) — every config key and environment variable
 - [Native lineage](native-lineage.md) — parent/child T3 threads
 - [Models and effort](models-and-effort.md) — automatic tiers and explicit overrides

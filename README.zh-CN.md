@@ -234,7 +234,7 @@ thread id reattach。关掉 T3 则 worker thread 也会消失。macOS 需要 24/
 | `foreman backup` / `compact` | 在线备份 / 清理历史。 |
 | `foreman service` | 生成 macOS launchd 常驻服务。 |
 
-完整命令和 flag 见 [文档索引](docs/README.md) 与
+完整命令和 flag 见 [Commands](docs/commands.md) 与
 [配置](docs/configuration.md)。
 
 ## 模型与 effort

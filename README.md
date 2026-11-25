@@ -259,23 +259,8 @@ lineage is the T3 path for a task, not a second runtime. See
 
 ## Commands
 
-| Command | Purpose |
-| --- | --- |
-| `foreman init` | Guided setup; writes `foreman.config.json`. |
-| `foreman up` | Daemon + leader loop + dashboard. |
-| `foreman daemon` | Daemon only. |
-| `foreman add <title> --brief ...` | Enqueue a task; optional `--model` / `--effort`. |
-| `foreman status [--json]` | Print the authoritative state card. |
-| `foreman ask "..."` | One leader turn. |
-| `foreman master create/show/set/test/clear` | Manage the bound T3 master thread. |
-| `foreman project list/add/set/enable/disable` | Manage the project registry. |
-| `foreman worker ...` | Enroll, run, drain, resume, revoke, and install workers. |
-| `foreman doctor` | Check Node, T3, providers, DB, port, and auth. |
-| `foreman backup` / `foreman compact` | Online backup / prune history. |
-| `foreman service` | Print a macOS launchd plist for 24/7 operation. |
-
-Full command and flag reference: [docs/README.md](docs/README.md) and
-[Configuration](docs/configuration.md).
+The common commands are `init`, `up`, `add`, `status`, `ask`, and `master`.
+Full command/flag reference: [docs/commands.md](docs/commands.md).
 
 ## Models and effort
 
@@ -290,8 +275,9 @@ foreman add "Audit the payment callback" \
   --effort max
 ```
 
-See [Models and effort](docs/models-and-effort.md). Model slugs are explicit
-config; Foreman does not yet auto-refresh the upstream T3 model catalog.
+Check the effective values with `foreman models`. See
+[Models and effort](docs/models-and-effort.md). Model slugs are explicit config;
+Foreman does not yet auto-refresh the upstream T3 model catalog.
 
 ## Documentation
 

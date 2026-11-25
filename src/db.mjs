@@ -153,26 +153,61 @@ function ensureColumn(db, table, column, definition) {
   }
 }
 
+export const SCHEMA_VERSION = 1;
+
+// Additive migrations only. The schema is created with CREATE IF NOT EXISTS,
+// then each migration brings older ledgers up to the current shape. Never
+// rewrite or drop a user's task/chat rows in a migration.
+const MIGRATIONS = [
+  {
+    version: 1,
+    up(db) {
+      ensureColumn(db, "tasks", "completion_token", "TEXT");
+      ensureColumn(db, "tasks", "artifact_path", "TEXT");
+      ensureColumn(db, "tasks", "artifact_contains", "TEXT");
+      ensureColumn(db, "tasks", "require_diff", "INTEGER NOT NULL DEFAULT 0");
+      ensureColumn(db, "tasks", "not_before", "INTEGER");
+      ensureColumn(db, "tasks", "project_id", "TEXT");
+      ensureColumn(db, "tasks", "worker_id", "TEXT");
+      ensureColumn(db, "tasks", "attempt_id", "TEXT");
+      ensureColumn(db, "tasks", "thread_link", "TEXT");
+      ensureColumn(db, "tasks", "model", "TEXT");
+      ensureColumn(db, "tasks", "effort", "TEXT");
+      ensureColumn(db, "workers", "token_hash", "TEXT");
+      ensureColumn(db, "workers", "token_hint", "TEXT");
+      ensureColumn(db, "workers", "token_created_at", "INTEGER");
+      ensureColumn(db, "workers", "protocol_version", "INTEGER");
+    },
+  },
+];
+
+export function schemaVersion(db) {
+  return Number(db.prepare("PRAGMA user_version").get()?.user_version) || 0;
+}
+
+function migrate(db) {
+  const current = schemaVersion(db);
+  if (current >= SCHEMA_VERSION) return;
+  for (const migration of MIGRATIONS) {
+    if (current >= migration.version) continue;
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      migration.up(db);
+      db.exec(`PRAGMA user_version = ${migration.version}`);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+}
+
 export function openDb(dbPath) {
   const db = new DatabaseSync(dbPath);
   db.exec("PRAGMA journal_mode = WAL");
   db.exec("PRAGMA busy_timeout = 5000");
   db.exec(SCHEMA);
-  ensureColumn(db, "tasks", "completion_token", "TEXT");
-  ensureColumn(db, "tasks", "artifact_path", "TEXT");
-  ensureColumn(db, "tasks", "artifact_contains", "TEXT");
-  ensureColumn(db, "tasks", "require_diff", "INTEGER NOT NULL DEFAULT 0");
-  ensureColumn(db, "tasks", "not_before", "INTEGER");
-  ensureColumn(db, "tasks", "project_id", "TEXT");
-  ensureColumn(db, "tasks", "worker_id", "TEXT");
-  ensureColumn(db, "tasks", "attempt_id", "TEXT");
-  ensureColumn(db, "tasks", "thread_link", "TEXT");
-  ensureColumn(db, "tasks", "model", "TEXT");
-  ensureColumn(db, "tasks", "effort", "TEXT");
-  ensureColumn(db, "workers", "token_hash", "TEXT");
-  ensureColumn(db, "workers", "token_hint", "TEXT");
-  ensureColumn(db, "workers", "token_created_at", "INTEGER");
-  ensureColumn(db, "workers", "protocol_version", "INTEGER");
+  migrate(db);
   if (dbPath !== ":memory:") {
     try {
       fs.chmodSync(dbPath, 0o600);
