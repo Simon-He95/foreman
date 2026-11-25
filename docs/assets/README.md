@@ -1,4 +1,6 @@
-# Screenshots and GIFs
+# Maintainer asset checklist
+
+This is an internal checklist, not part of the end-user guide.
 
 Use a clean demo project and data directory. No tokens, personal paths, or real
 conversations.

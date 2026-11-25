@@ -53,7 +53,8 @@ you ── chat + task board ──> Foreman leader (rule | claude | codex | dim
 
 T3 can run without Foreman. Foreman can run without T3 in `mock` mode. Together
 they give an agent fleet a durable, inspectable memory and a single source of
-truth.
+truth. Design rationale, non-goals, and the module map live in
+[DESIGN.md](DESIGN.md).
 
 ## Choose a path
 
@@ -251,16 +252,10 @@ lock will reject the second one.
 
 ## Core concepts
 
-| Concept | What it means |
-| --- | --- |
-| Task ledger | SQLite rows for every task, attempt, lease, event, inbox item, and chat turn. |
-| Lease + heartbeat | A running task must keep proving it is alive; silence is not success. |
-| Completion inbox | Terminal states are pushed to the leader as a batch, not polled from chat memory. |
-| State card | Bounded, deterministic counts and task summaries used by every surface. |
-| Completion contract | Optional proof that work happened: token, artifact, marker, or diff. |
-| Project registry | Names such as `web` or `api` map to local paths and adapters. |
-| Worker mode | Remote or local workers claim tasks with their own revocable tokens. |
-| Native lineage | Foreman master → T3 child thread with `parentThreadId` and `subagent` relationship. |
+One leader reads a durable SQLite ledger; tasks get leases and attempts; terminal
+states wake the leader through an inbox; optional contracts add evidence. Native
+lineage is the T3 path for a task, not a second runtime. See
+[docs/concepts.md](docs/concepts.md) and [DESIGN.md](DESIGN.md).
 
 ## Commands
 
@@ -284,15 +279,9 @@ Full command and flag reference: [docs/README.md](docs/README.md) and
 
 ## Models and effort
 
-Every task can carry its own model and reasoning effort. When omitted, the
-leader chooses a tier:
-
-| Tier | Typical work | Default |
-| --- | --- | --- |
-| `fast` / light | copy, formatting, one-file edits | fast model, effort `none` |
-| `standard` | simple lookup, data retrieval, weather/prices, ordinary cleanup | fast model, effort `auto` |
-| `deep` | research synthesis, analysis, architecture, audits | strong model, effort `max` |
-| `coding` | actual code edits: fixes, refactors, migrations, implementation | coding model, effort `max` |
+The leader chooses a tier: simple lookup and ordinary work use the fast model,
+deep research uses the strong model, and only actual code edits use the coding
+model. Override it on any task:
 
 ```bash
 foreman add "Audit the payment callback" \
@@ -301,9 +290,8 @@ foreman add "Audit the payment callback" \
   --effort max
 ```
 
-See [Models and effort](docs/models-and-effort.md). Default strong/coding
-slugs are DimAgent-specific; set `modelFast`, `modelStrong`, `modelCoding`, and
-`t3ReasoningOption` explicitly for other providers.
+See [Models and effort](docs/models-and-effort.md). Model slugs are explicit
+config; Foreman does not yet auto-refresh the upstream T3 model catalog.
 
 ## Documentation
 

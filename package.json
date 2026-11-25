@@ -30,6 +30,7 @@
     "foreman": "./src/cli.mjs"
   },
   "files": [
+    "DESIGN.md",
     "src/",
     "public/",
     "scripts/",

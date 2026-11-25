@@ -15,6 +15,7 @@ worker model.
 - [Project README](../README.md) — install and the five-minute tour
 - [Quickstart](quickstart.md) — choose a path: 2-minute mock demo, persistent
   mock control plane, or real T3 setup in 10–20 minutes
+- [Design](../DESIGN.md) — principles, non-goals, runtime topology, module map
 - [Concepts](concepts.md) — master, workers, ledger, lineage, effort
 - [Configuration](configuration.md) — every config key and environment variable
 - [Native lineage](native-lineage.md) — parent/child T3 threads

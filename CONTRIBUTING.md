@@ -11,7 +11,8 @@ npm run demo -- --duration 15
 ```
 
 T3-dependent tests are exercised with fake CLIs; a real T3 Code install is only
-needed for manual integration testing.
+needed for manual integration testing. Read [DESIGN.md](DESIGN.md) before
+changing the control plane, lineage path, or model policy.
 
 ## Pull requests
 
