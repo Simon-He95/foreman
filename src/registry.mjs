@@ -25,9 +25,30 @@ export function ensureDefaultProject(db, config) {
 
 export function resolveTaskProject(db, config, { project, projectPath } = {}) {
   if (project) {
-    const row = getProject(db, project);
+    let row = getProject(db, project);
+    // Leaders often see a T3 project path/name (for example "demo-repo") and
+    // put it in the project-name field. Accept it only when it resolves to a
+    // registered project path; arbitrary unregistered paths still need the
+    // explicit projectPath field.
     if (!row) {
-      const error = new Error(`unknown project: ${project}`);
+      try {
+        const byPath = resolveProjectPath(config, project);
+        row =
+          listProjects(db, { includeDisabled: true }).find(
+            (entry) =>
+              path.resolve(config.cwd, entry.local_path) === byPath,
+          ) || null;
+      } catch {
+        // fall through to the explicit unknown-project error
+      }
+    }
+    if (!row) {
+      const available = listProjects(db, { includeDisabled: true })
+        .map((entry) => entry.name)
+        .join(", ");
+      const error = new Error(
+        `unknown project: ${project}${available ? `; registered projects: ${available}` : ""}`,
+      );
       error.status = 404;
       throw error;
     }

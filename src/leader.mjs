@@ -197,6 +197,7 @@ export class Leader {
       "worker-routes 是用户的分工偏好：default/light/standard/deep/coding 分别对应 default/轻量/普通/探索研究/修复实现。用户说“探索用 X、修复用 Y、简单查询用 Z”时，用 set_model_routes 持久化，而不是只在回复里说记住了。",
       "如果用户明确说“所有/接下来所有 worker 和 subagent 都用主 Run 的模型”，用 set_model_routes 的 all 字段写成当前主 Run 的 provider/model/effort；不能只写 default，因为已有分类路由会优先于 default。",
       "如果 task projectPath 与当前主 Run 的 project 不同，T3 不能创建原生 child；任务会回退为顶层 worker。不要承诺 native lineage；要原生 child，先把主控和任务放在同一个 T3 project。",
+      "add_task 的 project 字段必须是 PROJECTS 里注册的 name（例如 default），不是路径、目录名或 T3 project 名。若要指定当前主 Run 的同一项目，省略 project 并让默认 projectPath 生效，或使用 projectPath。",
       "不要自动把所有 worker 都绑到主 Run；只有用户明确给出路由时，才设置对应的 route。用户对单次任务明确指定模型时，才在 add_task 里写 model 并设置 modelOverride=true。",
       "",
       "【最近事件】",

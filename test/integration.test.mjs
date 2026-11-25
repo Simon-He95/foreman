@@ -1286,7 +1286,7 @@ test("project resolver enforces directories and real-path roots", () => {
 test("project registry resolves tasks by name and stores project_id", () => {
   const dir = tempDir();
   const other = path.join(dir, "repo");
-  const config = testConfig(dir);
+  const config = testConfig(dir, { allowedProjectRoots: [dir] });
   const db = openDb(config.dbPath);
   try {
     fs.mkdirSync(other);
@@ -1303,6 +1303,15 @@ test("project registry resolves tasks by name and stores project_id", () => {
     const resolved = resolveTaskProject(db, config, { project: "repo" });
     assert.equal(resolved.projectPath, other);
     assert.equal(resolved.adapter, "mock");
+
+    const nested = path.join(dir, "special-project");
+    fs.mkdirSync(nested);
+    addProject(db, { name: "alias", path: nested, adapter: "mock" });
+    const resolvedByDirName = resolveTaskProject(db, config, {
+      project: nested,
+    });
+    assert.equal(resolvedByDirName.project.name, "alias");
+    assert.equal(resolvedByDirName.projectPath, nested);
 
     const task = addTask(db, {
       title: "registry-task",
