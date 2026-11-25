@@ -30,7 +30,9 @@ gh release create "v$(node -p 'require("./package.json").version')" \
 
 `npm publish` requires the `@simon-he95` scope and a granular npm token with
 publish rights. The package is public (`publishConfig.access=public`) and the
-binary remains `foreman`.
+binary remains `foreman`. There is also a manual GitHub Actions workflow
+(`publish`) with a dry-run default; add an `NPM_TOKEN` repository secret and run
+it from the Actions tab to publish with provenance.
 
 ## Security and secrets
 
