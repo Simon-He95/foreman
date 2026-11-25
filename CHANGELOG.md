@@ -41,6 +41,9 @@ All notable changes to Foreman are documented here. The format follows
 - Removed provider-name and model-name switches from the reasoning path. The
   option id and supported values come from each model's T3 descriptor; the
   `t3ReasoningOption` value is only a fallback when no catalog is readable.
+- Setup no longer invents provider-specific strong/coding model names. Tier
+  defaults now fall back to the selected worker model, while per-category
+  routes are the explicit way to use a different provider/model.
 
 ## [1.2.1] - 2026-11-25
 
