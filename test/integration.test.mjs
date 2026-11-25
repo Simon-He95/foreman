@@ -61,6 +61,7 @@ function tempDir() {
 function testConfig(dir, overrides = {}) {
   return loadConfig({
     cwd: ROOT,
+    ignoreConfigFile: true,
     dataDir: path.join(dir, "data"),
     projectPath: dir,
     adapter: "mock",

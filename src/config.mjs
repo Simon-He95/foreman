@@ -145,7 +145,7 @@ export function loadConfig(overrides = {}) {
   const configPath =
     process.env.FOREMAN_CONFIG || path.join(cwd, "foreman.config.json");
   let file = {};
-  if (fs.existsSync(configPath)) {
+  if (!overrides.ignoreConfigFile && fs.existsSync(configPath)) {
     file = JSON.parse(fs.readFileSync(configPath, "utf8"));
   }
 
