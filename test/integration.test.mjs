@@ -407,7 +407,10 @@ test("kill -9 mid-run reattaches the worker thread and finishes", async () => {
     await waitFor(
       () => {
         const current = getTask(reader, task.id);
-        return current.status === "done" ? current : false;
+        return (
+          current.status === "done" &&
+          unconsumedInbox(reader).some((item) => item.kind === "task_completed")
+        );
       },
       { timeout: 20000 },
     );
