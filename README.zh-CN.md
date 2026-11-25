@@ -1,4 +1,6 @@
-# Foreman
+<p align="center">
+  <img src="docs/assets/logo.svg" alt="Foreman 标志" width="520">
+</p>
 
 **给编码 Agent 集群用的常驻控制面。**
 

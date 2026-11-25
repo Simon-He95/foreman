@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" role="img" aria-labelledby="title desc">
+  <title id="title">Foreman — control plane for coding-agent fleets</title>
+  <desc id="desc">Foreman logo and positioning card: a durable ledger for coding-agent fleets.</desc>
+  <rect width="1280" height="640" fill="#F4EEDF"/>
+  <path d="M64 156h1152" stroke="#CFC4B0" stroke-width="1"/>
+  <path d="M64 430h1152" stroke="#CFC4B0" stroke-width="1"/>
+
+  <g transform="translate(64 44)">
+    <rect width="78" height="78" fill="#17140F"/>
+    <path fill="#F4EEDF" d="M17 15.8h35.3v8.5H25.6v12.2h20.7v8.5H25.6v18.3H17z"/>
+    <rect x="57.3" y="12.2" width="8.5" height="8.5" fill="#C8442B"/>
+    <rect x="57.3" y="31.7" width="8.5" height="8.5" fill="#C8442B"/>
+    <rect x="57.3" y="51.2" width="8.5" height="8.5" fill="#C8442B"/>
+    <path d="M61.6 20.7v11M61.6 40.2v11" stroke="#C8442B" stroke-width="1.8"/>
+  </g>
+  <text x="164" y="77" fill="#17140F" font-family="Iowan Old Style, Palatino Linotype, Georgia, serif" font-size="24" font-weight="500" letter-spacing="5.5">FOREMAN</text>
+  <text x="166" y="101" fill="#766B5C" font-family="Helvetica Neue, Arial, sans-serif" font-size="10" font-weight="600" letter-spacing="3">CONTROL PLANE FOR AGENT FLEETS</text>
+
+  <text x="64" y="208" fill="#17140F" font-family="Iowan Old Style, Palatino Linotype, Georgia, serif" font-size="66" font-weight="500">A durable control plane</text>
+  <text x="64" y="275" fill="#17140F" font-family="Iowan Old Style, Palatino Linotype, Georgia, serif" font-size="66" font-weight="500">for coding-agent fleets.</text>
+  <text x="66" y="331" fill="#3E372E" font-family="Helvetica Neue, Arial, sans-serif" font-size="21">One leader. One ledger. Every queue entry, lease, retry, and completion accounted for —</text>
+  <text x="66" y="360" fill="#3E372E" font-family="Helvetica Neue, Arial, sans-serif" font-size="21">even after the process dies.</text>
+
+  <text x="64" y="471" fill="#C8442B" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" font-weight="700" letter-spacing="2.4">TASK LEDGER</text>
+  <text x="64" y="497" fill="#17140F" font-family="Helvetica Neue, Arial, sans-serif" font-size="18">SQLite, not memory</text>
+  <text x="352" y="471" fill="#C8442B" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" font-weight="700" letter-spacing="2.4">LEASES</text>
+  <text x="352" y="497" fill="#17140F" font-family="Helvetica Neue, Arial, sans-serif" font-size="18">silence is not success</text>
+  <text x="640" y="471" fill="#C8442B" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" font-weight="700" letter-spacing="2.4">COMPLETION</text>
+  <text x="640" y="497" fill="#17140F" font-family="Helvetica Neue, Arial, sans-serif" font-size="18">contracts and receipts</text>
+  <text x="928" y="471" fill="#C8442B" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" font-weight="700" letter-spacing="2.4">LINEAGE</text>
+  <text x="928" y="497" fill="#17140F" font-family="Helvetica Neue, Arial, sans-serif" font-size="18">master → child threads</text>
+
+  <rect y="544" width="1280" height="96" fill="#17140F"/>
+  <g transform="translate(64 576)">
+    <rect width="32" height="32" fill="#F4EEDF"/>
+    <path fill="#17140F" d="M7 6.5h14.5v3.5H10.5v5h8.5v3.5h-8.5v7.5H7z"/>
+    <rect x="22.7" y="5" width="3.5" height="3.5" fill="#C8442B"/>
+    <rect x="22.7" y="13" width="3.5" height="3.5" fill="#C8442B"/>
+    <rect x="22.7" y="21" width="3.5" height="3.5" fill="#C8442B"/>
+  </g>
+  <text x="112" y="589" fill="#F4EEDF" font-family="Helvetica Neue, Arial, sans-serif" font-size="12" font-weight="700" letter-spacing="2.5">FOREMAN</text>
+  <text x="112" y="608" fill="#AFA596" font-family="Helvetica Neue, Arial, sans-serif" font-size="10" letter-spacing="2">CONTROL PLANE</text>
+  <circle cx="1160" cy="592" r="4" fill="#C8442B"/>
+  <text x="1174" y="596" fill="#F4EEDF" font-family="Helvetica Neue, Arial, sans-serif" font-size="11" font-weight="600" letter-spacing="1.5">LIVE</text>
+  <text x="64" y="624" fill="#AFA596" font-family="Helvetica Neue, Arial, sans-serif" font-size="9" letter-spacing="1.4">T3 CODE · NODE 22+ · GITHUB.COM/SIMON-HE95/FOREMAN</text>
+  <text x="1216" y="624" text-anchor="end" fill="#AFA596" font-family="Helvetica Neue, Arial, sans-serif" font-size="9" letter-spacing="1.4">ALPHA / 1.2.1</text>
+</svg>
