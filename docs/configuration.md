@@ -67,9 +67,9 @@ cheaper workers:
 
 To make **all** workers use one model without allowing overrides, set
 `forceModel`. To use one provider without allowing per-task overrides, set
-`forceProvider`. Without the force locks, `modelFast` / `modelStrong` /
-`modelCoding` are the tier defaults and `t3Provider` is the default worker
-provider.
+`forceProvider`. Without the force locks, `modelTiers` (or the legacy
+`modelFast` / `modelStrong` / `modelCoding` fields) are the tier defaults and
+`t3Provider` is the default provider for targets that omit one.
 
 ## User-directed model routes
 

@@ -32,8 +32,9 @@ concepts see [docs/concepts.md](docs/concepts.md); for setup see
 6. **T3 executes; Foreman supervises.** Foreman does not reimplement T3's
    agent loop, approvals, worktrees, or provider protocol.
 7. **Local-first and explicit.** Loopback is the default; a token is required
-   when exposed; project roots are allow-listed; model/provider selection is
-   explicit configuration.
+   when exposed; project roots are allow-listed. Model/provider intent is
+   explicit, capability truth comes from the T3 catalog, and every task stores
+   the resolved target plan that the fleet actually executes.
 8. **No build step.** Foreman ships plain ESM and static HTML. Node runs the
    source directly, which keeps the install path and debugging story small.
 
@@ -44,7 +45,8 @@ concepts see [docs/concepts.md](docs/concepts.md); for setup see
 | Task ledger and status | Threads and runs |
 | Leases, attempts, retries, recovery | Agent execution and tools |
 | Completion inbox and contracts | Approvals and diff/worktree UI |
-| Leader prompt and state card | Provider protocol and model catalog |
+| Model target resolution + catalog projection | Authoritative provider/model catalog |
+| Leader prompt and state card | Provider protocol |
 | Native-lineage delegation target | `parentThreadId` / `subagent` lineage |
 | Dashboard and ops API | Interactive chat and worker UI |
 
@@ -67,8 +69,41 @@ leader returns a pending add_task
 ```
 
 This is not a per-task model decision. A read-only research task and a coding
-task follow the same path; the task's **model tier** is independent of whether
-it becomes a subagent or a top-level thread.
+task follow the same path; the task's **model target** is independent of whether
+it becomes a subagent or a top-level thread. Native lineage compares canonical
+project identity (`project_key` / real path), not a user-supplied path string.
+
+## Model target pipeline
+
+A model is never passed around as a bare slug once a task leaves the request
+boundary. The control plane resolves one immutable target plan:
+
+```text
+tier / route / explicit override
+        │
+        ▼
+T3 catalog snapshot (provider + model advertised?)
+        │  no → reject with suggestions
+        ▼
+reasoning descriptor (option id + advertised values)
+        │  map max → xhigh / max / ultra as advertised
+        ▼
+target_json + provider/model/effort + reasoning option/value
+        │
+        ├─ local daemon → adapter
+        └─ worker claim → assignment.target → worker adapter
+```
+
+The catalog is currently a snapshot of T3's provider cache, not a live
+capability/auth RPC. The snapshot records `source`, `revision`, `observedAt`,
+and `stale`; auth/model-start failures are classified as non-retryable when
+possible. A live source can replace the cache implementation without changing
+the router, task plan, or adapters.
+
+The target plan is deliberately stored on the task. It gives retries and
+diagnostics an audit trail, lets a worker use the control plane's decision even
+with a different cache, and prevents a catalog change from silently changing
+an already-started task.
 
 ## Runtime topology
 
@@ -78,10 +113,11 @@ T3 Code (desktop app or `t3 serve`, default :3773)
    ▼
 Foreman `up` (:3777)
    ├─ HTTP dashboard + JSON API
-   ├─ daemon: claim → lease → poll → verify → retry/reattach
-   └─ leader loop: drain completion inbox → bounded state card → briefing
+   ├─ daemon: resolve target → claim → lease → poll → verify → retry/reattach
+   ├─ leader loop: drain completion inbox → bounded state card → briefing
+   └─ catalog snapshot: T3 provider cache + provenance/staleness
    │
-   └─ SQLite: dataDir/foreman.db
+   └─ SQLite: dataDir/foreman.db (tasks carry target_json/project_key)
 ```
 
 The dashboard is optional. The T3 master is optional for CLI-only use, but it is
@@ -97,7 +133,10 @@ src/
   db.mjs               SQLite schema and ledger primitives
   daemon.mjs           claim, lease, poll, retry, reattach
   leader.mjs           leader prompt, model policy actions, fallback
-  model-policy.mjs     tier classification and provider reasoning mapping
+  leader-options.mjs   FC choices + T3 catalog snapshot/provenance
+  model-policy.mjs     tier targets, classification, effort vocabulary
+  model-catalog.mjs    target resolution, validation, reasoning plans
+  registry.mjs         canonical project identity / project_key
   server.mjs           HTTP API, auth, project-root checks
   state.mjs            bounded state card shared by every surface
   adapters/            mock and T3 execution adapters
@@ -139,9 +178,11 @@ Foreman is not:
   plane. HA and multi-control-plane coordination are out of scope for now.
 - **Polling T3.** More portable than assuming a webhook/MCP event surface. The
   cost is a tick per running task; MCP events are future work.
-- **Static model catalog.** Explicit `modelFast` / `modelStrong` / `modelCoding`
-  keeps selection predictable. Upstream model changes require config updates
-  until capability discovery is implemented.
+- **Cache-backed model catalog.** T3's provider cache is the available
+  capability source; Foreman records provenance and stale state instead of
+  pretending it is live. A live capability/auth RPC is future work. Typed
+  `modelTiers` / routes make tier choices explicit, while the catalog prevents
+  unadvertised provider/model pairs from starting.
 - **HTTP worker transport.** Easy to deploy over Tailscale/LAN; TLS and
   authentication are deliberately the operator's responsibility.
 - **Monolithic dashboard and integration test.** Fast to iterate while the
@@ -156,4 +197,6 @@ Before adding a feature, ask:
 - Can it be explained from `foreman status` without model memory?
 - What happens on restart, missing heartbeat, or provider failure?
 - Is the default safe for local use and explicit for remote use?
+- Is the resolved target/identity stored as data rather than re-parsed from a
+  string by each boundary?
 - Does the README stay focused on onboarding, with detailed reference moved to docs?

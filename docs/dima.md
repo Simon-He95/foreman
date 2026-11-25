@@ -79,9 +79,28 @@ for everything. Edit `foreman.config.json`:
 {
   "t3Provider": "dima",
   "t3Model": "provider/model-from-dima",
-  "modelFast": "provider/fast-model",
-  "modelStrong": "provider/strong-model",
-  "modelCoding": "provider/coding-model",
+  "modelTiers": {
+    "light": {
+      "provider": "dima",
+      "model": "provider/fast-model",
+      "effort": "none"
+    },
+    "standard": {
+      "provider": "dima",
+      "model": "provider/fast-model",
+      "effort": "auto"
+    },
+    "deep": {
+      "provider": "dima",
+      "model": "provider/strong-model",
+      "effort": "max"
+    },
+    "coding": {
+      "provider": "dima",
+      "model": "provider/coding-model",
+      "effort": "max"
+    }
+  },
   "leaderChoices": [
     {
       "provider": "dima",

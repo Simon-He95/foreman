@@ -356,7 +356,8 @@ Known limits and the roadmap are tracked in
 - worker transport is HTTP; bring your own TLS
 - no budget enforcement yet
 - T3 completion is polled each tick; MCP events/webhooks are next
-- worker model slugs are explicit config; FC choices are discovered from enabled T3 providers (plus `leaderChoices`)
+- tier targets are explicit config (`modelTiers` or legacy tier fields); model identity is resolved against the T3 catalog snapshot
+- the catalog is cache-backed, not a live capability/auth RPC; auth failures are blocked as non-retryable
 - master notifications are user-role messages in T3, not OS notifications
 
 ## Contributing

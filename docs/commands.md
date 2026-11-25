@@ -14,7 +14,7 @@ text; this page is the reference.
 | `foreman status [--json]` | Print the authoritative state card. |
 | `foreman ask "..."` | One leader turn. |
 | `foreman master create/show/set/test/clear` | Manage the bound T3 master thread. |
-| `foreman models [--json]` | Show the effective fast / strong / coding catalog. |
+| `foreman models [--json]` | Show tier targets, catalog provenance, and discovered provider/model choices. |
 | `foreman project list/add/set/enable/disable` | Manage the project registry. |
 | `foreman worker ...` | Enroll, run, drain, resume, revoke, and install workers. |
 | `foreman doctor` | Check Node, T3, providers, DB, port, and auth. |
@@ -95,15 +95,19 @@ foreman models --json
 
 This prints the **effective** config, typed `tierTargets`, catalog provenance
 (`source`, `revision`, `observedAt`, `stale`), and catalog-derived reasoning
-option ids. It does not modify T3. Worker tier slugs are intentionally explicit; FC
-choices are discovered from enabled T3 providers (plus `leaderChoices`). Route
-and task preflight reads the T3 provider cache, so advertised model changes are
-noticed without a Foreman restart. The cache is a snapshot; restart T3 after
-adding/removing a provider to refresh it. If T3 renames a tier model, update
-`modelFast`, `modelStrong`, or `modelCoding` explicitly.
+option ids. It does not modify T3. Tier targets are explicit; FC choices are
+discovered from enabled T3 providers (plus `leaderChoices`). Route and task
+preflight reads the T3 provider cache, so advertised model changes are noticed
+without a Foreman restart. The cache is a snapshot; restart T3 after
+adding/removing a provider to refresh it. If T3 renames a model, update the
+relevant `modelTiers` entry (or legacy `modelFast` / `modelStrong` /
+`modelCoding` field).
+
 The selected FC is persisted per T3 master thread. The output also shows
 `worker routes` when the master or config has a category map (`light`,
 `standard`, `deep`, `coding`, `default`); each route is a provider + model pair.
+Each task stores the resolved `target_json`, actual reasoning option/value,
+source, and catalog revision; `foreman status --json` exposes those fields.
 
 ## Release (maintainers)
 

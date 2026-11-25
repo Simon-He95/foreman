@@ -16,6 +16,7 @@
   "forceProvider": null,
   "forceModel": null,
   "workerModelRoutes": null,
+  "modelTiers": null,
   "modelFast": null,
   "modelStrong": null,
   "modelCoding": null,

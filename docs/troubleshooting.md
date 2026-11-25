@@ -82,8 +82,9 @@ If remote, remember the token and do not expose plain HTTP.
 
 ## FC model picker is empty or stale
 
-The T3 provider catalog is cached by T3, not polled by Foreman. After registering
-a provider or changing its models:
+Foreman reads T3's provider cache for resolution and exposes its provenance, but
+the cache is a snapshot, not a live capability/auth RPC. After registering a
+provider or changing its models:
 
 ```bash
 npm run t3:register-dima   # if using the Rust alpha
@@ -94,7 +95,23 @@ foreman doctor             # checks T3, FC choices, and the bound master FC
 ```
 
 If a dima choice is missing, add an explicit fallback in `leaderChoices` and
-restart T3 so the Foreman provider advertises it.
+restart T3 so the Foreman provider advertises it. If the dashboard says the
+catalog is stale, restart T3 and refresh the dashboard.
+
+## A task says `target_json` / catalog revision mismatch
+
+Target plans are intentionally snapshots. A queued task is revalidated against
+the current catalog when it is claimed; a running task keeps the target it
+started with. A worker assignment includes the control plane's exact target, so
+a worker with a different `t3Home` should not choose another model. Retry a
+blocked task after fixing the route to create a new target plan.
+
+## Authentication failure
+
+`Provider authentication is required` is classified as a non-retryable auth
+error. The task is blocked rather than consuming its retry budget. Fix the T3
+provider login/auth state, then retry the task. The dashboard's current-Run
+warning can indicate the same problem before you dispatch work.
 
 
 ## Effort picker shows the wrong values

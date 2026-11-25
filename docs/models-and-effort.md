@@ -17,7 +17,8 @@ not upgraded to the coding model just because its brief contains an API URL,
 "代码搜索", or the word "测试". Only an edit intent in the task title/request
 (e.g. 修复 / 实现 / 重构 / 迁移 / 调试) selects the coding tier.
 
-Defaults are configuration, not hard requirements:
+Defaults are configuration, not hard requirements. The legacy bare form is
+still accepted for simple single-provider deployments:
 
 ```json
 {
@@ -27,6 +28,9 @@ Defaults are configuration, not hard requirements:
   "t3ReasoningOption": "thought_level"
 }
 ```
+
+For separate providers per tier, use `modelTiers` below; it is preferred over
+the legacy fields.
 
 ## User-directed routes
 
@@ -239,7 +243,8 @@ Foreman reads the T3 provider cache on target resolution, so route and task
 preflight notices model additions/removals without a Foreman restart. The cache
 is a snapshot of T3's capability/auth state, not a live RPC: restart T3 after a
 provider change to refresh it, and treat auth failures as thread-start errors.
-The fast/strong/coding tier slugs remain explicit config values (`modelFast`,
-`modelStrong`, `modelCoding`) or environment overrides. If T3 renames a model,
-update those tier values; a live T3 capability/auth RPC is still a roadmap item.
-`foreman models` shows the effective config and catalog-derived reasoning ids.
+Tier values remain explicit configuration through `modelTiers` or the legacy
+`modelFast` / `modelStrong` / `modelCoding` fields. If T3 renames a model,
+update the tier target; a live T3 capability/auth RPC is still a roadmap item.
+`foreman models` shows the effective config, `tierTargets`, provenance, and
+catalog-derived reasoning ids.

@@ -29,9 +29,9 @@ worker model.
 
 ## Status and limits
 
-Foreman is 1.2. The ledger, leases, retries, completion contracts, mock and
-T3 adapters, dashboard, workers, native lineage, schema migrations, and macOS
-CI are implemented and covered by `npm test`. The supported real path is T3 Code
+Foreman is 1.3. The ledger, leases, retries, completion contracts, mock and
+T3 adapters, dashboard, workers, native lineage, resolved target plans, schema
+migrations, and macOS CI are implemented and covered by `npm test`. The supported real path is T3 Code
 + a T3 ACP provider; DimAgent is the reference provider.
 
 Known limits:
@@ -42,7 +42,10 @@ Known limits:
 - T3 completion is polled each tick; MCP events/webhooks are future work
 - master notifications are T3 user-role messages, not OS notifications
 - one bound master thread; multi-project master routing is on the roadmap
-- worker model slugs are explicit config; FC choices are discovered from enabled T3 providers (plus `leaderChoices`)
+- tier targets are explicit config (`modelTiers` or legacy fields); target
+  resolution uses the T3 catalog snapshot
+- the T3 catalog is cache-backed, not a live capability/auth RPC; provider auth
+  can still fail at thread start and is then blocked as a non-retryable error
 
 ## The mental model
 
@@ -51,10 +54,10 @@ T3 master thread (provider=foreman)
         │  prompt
         ▼
 Foreman control plane (/api/ask → leader)
-        │  add_task, model/effort plan
+        │  add_task + resolved target plan
         ▼
-T3 delegate_task (native child thread)
-        │  runs a worker model
+T3 delegate_task (native child thread) / worker assignment
+        │  runs the control-plane-selected target
         ▼
 Foreman daemon polls + verifies completion contract
         │
