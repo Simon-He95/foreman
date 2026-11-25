@@ -94,3 +94,11 @@ foreman doctor             # checks T3, FC choices, and the bound master FC
 
 If a dima choice is missing, add an explicit fallback in `leaderChoices` and
 restart T3 so the Foreman provider advertises it.
+
+
+## Effort picker shows the wrong values
+
+T3 caches model option descriptors at provider startup. If an effort picker
+still shows generic values after changing a provider's capabilities, restart T3
+and reopen the model picker. For dima DeepSeek V4.1 Flash the registered choices
+are `none`, `high`, and `max`.

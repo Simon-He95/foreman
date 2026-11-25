@@ -53,8 +53,41 @@ settings.providerInstances = {
       distribution: "auto",
       // The Rust alpha may expose only a default placeholder model. These
       // explicit models are forwarded to the provider and are also used by
-      // Foreman's dima leader/worker paths.
-      customModels: ["deepseek-v4.1-flash"],
+      // Foreman's dima leader/worker paths. Keep the effort choices aligned
+      // with the provider's real reasoning levels.
+      customModels: [
+        {
+          slug: "deepseek-v4.1-flash",
+          name: "DeepSeek V4.1 Flash",
+          capabilities: {
+            optionDescriptors: [
+              {
+                id: "mode",
+                label: "Permission mode",
+                type: "select",
+                currentValue: "workspace-write",
+                options: [
+                  { id: "read-only", label: "read-only" },
+                  { id: "workspace-write", label: "workspace-write" },
+                  { id: "full-access", label: "full-access" },
+                ],
+              },
+              {
+                id: "effort",
+                label: "Reasoning effort",
+                type: "select",
+                currentValue: "high",
+                role: "reasoning",
+                options: [
+                  { id: "none", label: "none" },
+                  { id: "high", label: "high" },
+                  { id: "max", label: "max" },
+                ],
+              },
+            ],
+          },
+        },
+      ],
     },
   },
 };

@@ -85,6 +85,9 @@ with every `/api/ask` call, so different FC threads can use different
 leader providers/models/efforts.
 
 - `dim` and `dima` use their native CLI backends.
+- Effort values are derived from the selected provider/model where the T3
+  provider exposes option descriptors; for dima DeepSeek V4.1 Flash that is
+  `none`, `high`, or `max`, not the generic T3 labels.
 - Other registered providers (including Codex, Claude Agent, and custom
   providers) are executed through a T3 leader thread, so their T3 provider
   authentication, model catalog, and reasoning option id are honored.

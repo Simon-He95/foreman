@@ -4,6 +4,16 @@ All notable changes to Foreman are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [1.2.1] - 2026-11-25
+
+### Fixed
+
+- Dima `deepseek-v4.1-flash` advertises its real reasoning choices
+  (`none`, `high`, `max`) instead of generic T3 effort labels.
+- Foreman FC effort options are derived from the selected provider/model
+  capabilities instead of always exposing the global effort vocabulary.
+- Restarting T3 refreshes the provider/model option descriptors.
+
 ## [1.2.0] - 2026-11-25
 
 ### Added

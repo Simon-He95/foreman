@@ -26,6 +26,28 @@ function providerMode(provider) {
   return "t3";
 }
 
+function canonicalEfforts(model) {
+  const descriptors = model?.capabilities?.optionDescriptors || [];
+  const descriptor = descriptors.find(
+    (item) =>
+      item.role === "reasoning" ||
+      ["effort", "reasoningEffort", "thought_level"].includes(item.id),
+  );
+  if (!descriptor) return null;
+  const efforts = new Set();
+  for (const option of descriptor.options || []) {
+    const value = String(option.id ?? option.value ?? "").toLowerCase();
+    if (!value) continue;
+    if (value === "provider-default" || value === "auto") efforts.add("auto");
+    else if (["max", "xhigh", "ultra", "ultrathink"].includes(value)) efforts.add("max");
+    else if (["high"].includes(value)) efforts.add("high");
+    else if (["none", "low", "minimal", "medium", "off"].includes(value)) efforts.add("none");
+  }
+  return efforts.size
+    ? [...["auto", "none", "high", "max"]].filter((effort) => efforts.has(effort))
+    : null;
+}
+
 export function t3Home(config = null) {
   if (config?.t3Home) return path.resolve(config.t3Home);
   return process.env.T3CODE_HOME
@@ -66,6 +88,7 @@ function cacheChoices(config = null) {
         model: slug,
         label: `${displayName} / ${model.name || slug}`,
         description: `${provider} · ${slug}`,
+        efforts: canonicalEfforts(model),
       });
     }
   }
@@ -116,7 +139,13 @@ function defaultProvider(config) {
 }
 
 export function leaderChoices(config) {
-  const choices = [...explicitChoices(config), ...cacheChoices(config)];
+  const merged = new Map();
+  for (const choice of explicitChoices(config)) merged.set(choice.id, choice);
+  for (const choice of cacheChoices(config)) {
+    const previous = merged.get(choice.id);
+    merged.set(choice.id, previous ? { ...choice, ...previous, efforts: choice.efforts || previous.efforts } : choice);
+  }
+  const choices = [...merged.values()];
   const provider = defaultProvider(config);
   const model = String(config.leaderModel || "").trim();
   if (model) {
@@ -207,7 +236,16 @@ export function normalizeLeaderOverride(input, config, options = null) {
 export function leaderConfigOptions(config, currentInput = null) {
   const options = leaderChoices(config);
   const current = normalizeLeaderOverride(currentInput, config, options);
-  const efforts = [...new Set([...EFFORT_LEVELS, current.effort])];
+  const choice = options.choices.find(
+    (item) =>
+      item.provider === current.provider && item.model === current.model,
+  );
+  const efforts = [
+    ...new Set([
+      ...(choice?.efforts || EFFORT_LEVELS),
+      current.effort,
+    ]),
+  ];
   return {
     options,
     current,

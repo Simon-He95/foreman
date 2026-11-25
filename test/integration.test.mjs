@@ -247,7 +247,26 @@ test("FC leader choices expose provider models and per-provider effort", () => {
     JSON.stringify({
       providerInstanceId: "dima",
       displayName: "DimAgent Rust",
-      models: [{ slug: "deepseek-v4.1-flash", name: "DeepSeek Rust" }],
+      models: [
+        {
+          slug: "deepseek-v4.1-flash",
+          name: "DeepSeek Rust",
+          capabilities: {
+            optionDescriptors: [
+              {
+                id: "effort",
+                type: "select",
+                role: "reasoning",
+                options: [
+                  { id: "none" },
+                  { id: "high" },
+                  { id: "max" },
+                ],
+              },
+            ],
+          },
+        },
+      ],
     }),
   );
   const config = testConfig(dir, {
@@ -273,6 +292,10 @@ test("FC leader choices expose provider models and per-provider effort", () => {
     });
     assert.equal(configOptions.configOptions[0].currentValue, "dima::deepseek-v4.1-flash");
     assert.equal(configOptions.configOptions[1].currentValue, "max");
+    assert.deepEqual(
+      configOptions.configOptions[1].options.map((option) => option.value),
+      ["none", "high", "max"],
+    );
     const override = normalizeLeaderOverride(
       { provider: "dima", model: "deepseek-v4.1-flash", effort: "high" },
       config,
