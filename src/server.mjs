@@ -150,17 +150,24 @@ function resolveWorkerId(req, body = {}) {
 function readBody(req, limit = 1024 * 1024) {
   return new Promise((resolve, reject) => {
     let size = 0;
+    let settled = false;
     const chunks = [];
     req.on("data", (chunk) => {
+      if (settled) return;
       size += chunk.length;
       if (size > limit) {
+        settled = true;
         reject(httpError(413, "body too large"));
-        req.destroy();
+        // Drain the rest instead of resetting the socket so the client can
+        // read the explicit 413 response.
+        req.resume();
         return;
       }
       chunks.push(chunk);
     });
     req.on("end", () => {
+      if (settled) return;
+      settled = true;
       if (chunks.length === 0) return resolve({});
       try {
         resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
@@ -168,7 +175,11 @@ function readBody(req, limit = 1024 * 1024) {
         reject(httpError(400, "invalid JSON"));
       }
     });
-    req.on("error", reject);
+    req.on("error", (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    });
   });
 }
 

@@ -645,9 +645,16 @@
       .task-top { display: flex; flex-wrap: wrap; gap: 5px 10px; }
       .task-top h3 { flex: 1 1 100%; order: 3; }
       .prio { margin-left: auto; }
+      .route-row {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        align-items: start;
+      }
+      .route-label { grid-column: 1 / -1; }
+      .route-suggestion { margin-left: 0; }
     }
     @media (max-width: 560px) {
       .top { padding: 10px 12px; gap: 10px; flex-wrap: wrap; }
+      .statusline { flex-wrap: wrap; overflow-x: visible; row-gap: 6px; }
       .brand .sub { display: none; }
       main { padding: 0 12px 12px; }
       .board-head { padding-top: 14px; }
@@ -1924,7 +1931,16 @@
         ? `唯一主会话：${masterThreadId}`
         : "尚未绑定 master thread；先运行 foreman master create";
       $("session").className = `pill ${masterThreadId ? "live" : "dead"}`;
-      $("adapter-warning").classList.toggle("hidden", data.adapter !== "mock");
+      const defaultProject = (data.projects || []).find(
+        (project) => project.name === "default",
+      );
+      const mockTaskDefault =
+        data.adapter === "mock" || defaultProject?.adapter === "mock";
+      $("adapter-warning").classList.toggle("hidden", !mockTaskDefault);
+      $("adapter-warning").textContent =
+        data.adapter === "mock"
+          ? "MOCK · 任务是演练，不执行真实命令"
+          : "默认项目使用 mock · 任务是演练，不执行真实命令";
       $("setup-panel").classList.toggle("hidden", Boolean(masterThreadId));
       $("quick").classList.toggle("hidden", !masterThreadId);
       $("ask-form").classList.toggle("hidden", !masterThreadId);

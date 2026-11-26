@@ -383,7 +383,7 @@ export class Leader {
       "12. 用户给出模型分工指令时，先用 set_model_routes 持久化，再在同一次回复里派发任务；不要只在回复里声称记住。",
       "13. 模型 slug 可能包含 `/`，但 provider id 不能包含 `/` 或 `::`；写错 provider 会在 T3 启动前被拒绝。",
       "14. 主会话是唯一入口：简单查询（进度、任务详情、结果、失败原因）直接回答；需要细节时先 lookup，不要为了读取详情另派任务，也不要把用户引到 worker thread。",
-      "15. ADAPTER=mock 时不要派任务去满足“查真实 GitHub/网页/文件”的请求；直接说明这是 mock 演练，告知用户设置 foreman.config.json 的 adapter=t3、运行 foreman project set default --adapter t3 并重启后再派。result 以 mock worker finished 开头时也要明确标注为 mock。",
+      "15. ADAPTER=mock 或 PROJECTS 行里的默认项目标记为 [mock] 时，不要派任务去满足“查真实 GitHub/网页/文件”的请求；直接说明这是 mock 演练，告知用户设置 foreman.config.json 的 adapter=t3、运行 foreman project set default --adapter t3 并重启后再派。result 以 mock worker finished 开头时也要明确标注为 mock。",
     ].join("\n");
   }
 

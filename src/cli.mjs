@@ -126,6 +126,7 @@ function overridesFromFlags(flags) {
     leader: "leaderMode",
     "leader-provider": "leaderProvider",
     "leader-model": "leaderModel",
+    "leader-effort": "leaderEffort",
     "dima-bin": "dimaBin",
     "codex-bin": "codexBin",
     "codex-model": "codexModel",
@@ -835,12 +836,12 @@ async function commandUp(flags) {
     logger.warn(
       `[foreman] ADAPTER=mock: tasks are simulated and do not run real commands or read real repositories.${fs.existsSync(config.configPath) ? "" : ` No ${config.configPath} found; initialize with foreman init --adapter t3 for real work.`}`,
     );
-    const defaultProject = getProject(db, "default");
-    if (defaultProject && defaultProject.default_adapter === "mock") {
-      logger.warn(
-        "[foreman] default project adapter=mock; switching config to t3 also requires: foreman project set default --adapter t3",
-      );
-    }
+  }
+  const defaultProject = getProject(db, "default");
+  if (defaultProject && defaultProject.default_adapter === "mock") {
+    logger.warn(
+      "[foreman] default project adapter=mock; tasks for this project are simulated. Run: foreman project set default --adapter t3",
+    );
   }
   const adapters = createAdapterRegistry(config);
   const daemon = new Daemon({ db, config, adapters, logger });

@@ -666,6 +666,11 @@ test("FC leader choices expose provider models and per-provider effort", () => {
     const choices = leaderChoices(config);
     assert.equal(choices.defaultChoice.provider, "dim");
     assert.ok(choices.choices.some((choice) => choice.id === "dima::deepseek-v4.1-flash"));
+    const providerDefault = leaderChoices(
+      testConfig(dir, { t3Home: home, leaderMode: "dima" }),
+    ).defaultChoice;
+    assert.equal(providerDefault.provider, "dima");
+    assert.equal(providerDefault.model, "deepseek-v4.1-flash");
     const configOptions = leaderConfigOptions(config, {
       provider: "dima",
       model: "deepseek-v4.1-flash",
@@ -1331,6 +1336,36 @@ test("foreman init writes a non-interactive config", () => {
   }
 });
 
+test("CLI flag overrides include leader effort", () => {
+  const dir = tempDir();
+  try {
+    const output = execFileSync(
+      process.execPath,
+      [
+        path.join(ROOT, "src", "cli.mjs"),
+        "models",
+        "--json",
+        "--data-dir",
+        "data",
+        "--leader",
+        "dim",
+        "--leader-model",
+        "gpt-6.2-astra",
+        "--leader-effort",
+        "high",
+      ],
+      { cwd: dir, encoding: "utf8" },
+    );
+    const data = JSON.parse(output);
+    assert.equal(data.leader.mode, "dim");
+    assert.equal(data.leader.provider, "dim");
+    assert.equal(data.leader.model, "gpt-6.2-astra");
+    assert.equal(data.leader.effort, "high");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("mock fleet runs end-to-end and the leader wakes on completions", async () => {
   const dir = tempDir();
   const config = testConfig(dir);
@@ -1533,10 +1568,12 @@ test("state card and rule reply reflect the ledger, not memory", async () => {
       heartbeat_at: Date.now() - 1000,
       lease_until: Date.now() + 30000,
     });
+    addProject(db, { name: "t3-project", path: dir, adapter: "t3" });
 
     const card = buildStateCard(db, config);
     assert.match(card, /TOTALS: total=2 queued=1 running=1/);
-    assert.match(card, /ADAPTER: mock/);
+    assert.match(card, /ADAPTER: mock \(MOCK\/SIMULATED/);
+    assert.match(card, /t3-project@[^\n]*\[t3\]/);
     assert.match(card, /running-task/);
     assert.match(card, /queued-task/);
     assert.match(card, /thread=mock_running/);
@@ -2528,6 +2565,20 @@ test("HTTP API requires a token and enforces project roots", async () => {
       body: JSON.stringify({ title: "bad-type" }),
     });
     assert.equal(badType.status, 415);
+
+    const badJson = await fetch(`${base}/api/tasks`, {
+      method: "POST",
+      headers: { ...auth, "content-type": "application/json" },
+      body: "{",
+    });
+    assert.equal(badJson.status, 400);
+
+    const tooLarge = await fetch(`${base}/api/tasks`, {
+      method: "POST",
+      headers: { ...auth, "content-type": "application/json" },
+      body: JSON.stringify({ title: "too-large", brief: "x".repeat(1024 * 1024) }),
+    });
+    assert.equal(tooLarge.status, 413);
   } finally {
     server.server.closeAllConnections?.();
     await server.close();

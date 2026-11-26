@@ -12,10 +12,11 @@ date (`npm start`).
 
 ## Master says it ran `gh` / checked the web, but results are mock
 
-Check the state card for `ADAPTER: mock` and recent results beginning with
-`mock worker finished`. This means Foreman was started without a
-`foreman.config.json`, so it used the mock adapter. No real shell/network work
-ran.
+Check the state card for `ADAPTER: mock` or a `PROJECTS:` entry with `[mock]`,
+the dashboard mock banner, and recent results beginning with
+`mock worker finished`. This can happen when Foreman was started without a
+`foreman.config.json`, or when the default project still has `adapter=mock`
+after the global adapter was switched. No real shell/network work ran.
 
 Fix the project, then restart Foreman:
 

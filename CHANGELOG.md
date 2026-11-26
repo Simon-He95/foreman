@@ -17,6 +17,14 @@ All notable changes to Foreman are documented here. The format follows
   mock default project is present.
 - The Foreman ACP provider no longer appends raw applied-action JSON to master
   replies by default; it is available only with `FOREMAN_ACP_SHOW_ACTIONS=1`.
+- `--leader-effort` is now honored by `foreman up` and other commands that load
+  config from flags; previously it was silently ignored outside `foreman init`.
+- Dashboard model-routing rows reflow on narrow screens instead of clipping the
+  effort selector; the header status line wraps on very narrow screens so mode,
+  worker, and FC details are not cut off. Oversized API request bodies now return
+  an explicit 413 instead of resetting the connection.
+- Setup/FC defaults now prefer the configured provider's first advertised model
+  when no leader model is pinned, instead of an arbitrary T3 cache entry.
 
 ## [1.5.0] - 2026-11-26
 

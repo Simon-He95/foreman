@@ -324,9 +324,11 @@ export function leaderChoices(config) {
       description: `${provider} · ${model || "default"}`,
     });
   }
-  const preferred = deduped.find(
-    (choice) => choice.id === `${provider}::${model}`,
-  );
+  const preferred =
+    deduped.find((choice) => choice.id === `${provider}::${model}`) ||
+    // With no explicit model, prefer the configured provider's first
+    // advertised model instead of whatever happens to be first in T3's cache.
+    deduped.find((choice) => choice.provider === provider);
   return { choices: deduped, defaultChoice: preferred || deduped[0] };
 }
 
