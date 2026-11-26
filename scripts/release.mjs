@@ -279,7 +279,9 @@ if (stageId) {
 }
 
 let liveVersion = registryVersion(name);
-for (let attempt = 0; attempt < 6 && liveVersion !== nextVersion; attempt += 1) {
+// npm's public registry can lag the successful publish by tens of seconds.
+// Do not fail before the tag/commit just because this CDN read is stale.
+for (let attempt = 0; attempt < 45 && liveVersion !== nextVersion; attempt += 1) {
   await new Promise((resolve) => setTimeout(resolve, 2000));
   liveVersion = registryVersion(name);
 }
