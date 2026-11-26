@@ -10,6 +10,31 @@ If the master refuses instead of delegating, check that `leaderMode` is `dim`
 (or another model with the current prompt) and that the leader prompt is up to
 date (`npm start`).
 
+## Master says it ran `gh` / checked the web, but results are mock
+
+Check the state card for `ADAPTER: mock` and recent results beginning with
+`mock worker finished`. This means Foreman was started without a
+`foreman.config.json`, so it used the mock adapter. No real shell/network work
+ran.
+
+Fix the project, then restart Foreman:
+
+```bash
+cd /path/to/your/repo
+foreman init --adapter t3 --project . \
+  --provider dim --model dimcode-api-oauth/deepseek-v4.1-flash \
+  --leader dima --leader-model deepseek-v4.1-flash --leader-effort max --force
+foreman project set default --adapter t3
+# restart the control plane; existing mock tasks stay historical
+```
+
+The second command matters: an existing `default` project can still carry
+`adapter=mock` and override the new global `adapter=t3` setting. Do not trust a
+completed task whose result is a mock placeholder.
+
+If the master still claims real data after this, use `foreman status` and check
+`ADAPTER: t3` plus `PROJECTS: default@...[t3]` before retrying.
+
 ## `The provider could not start this turn`
 
 Usually an ACP session resume problem. Foreman advertises `session/resume`; make

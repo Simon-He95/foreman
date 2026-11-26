@@ -6,6 +6,18 @@ All notable changes to Foreman are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-11-26
+
+### Fixed
+
+- Mock mode is now explicit in the state card (`ADAPTER: mock`), mock
+  completions are labeled `🧪 MOCK`, and the leader is forbidden from claiming
+  real `gh`/web/repository work while the mock adapter is active. The dashboard
+  shows a mock warning and `foreman up` warns when no config file or a stale
+  mock default project is present.
+- The Foreman ACP provider no longer appends raw applied-action JSON to master
+  replies by default; it is available only with `FOREMAN_ACP_SHOW_ACTIONS=1`.
+
 ## [1.5.0] - 2026-11-26
 
 ### Added

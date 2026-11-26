@@ -140,6 +140,9 @@ export function buildStateCard(
   lines.push(
     `EXECUTION: ${config.executionMode === "worker" ? "worker (daemon only schedules; registered workers execute)" : "local (daemon executes tasks itself)"}`,
   );
+  lines.push(
+    `ADAPTER: ${config.adapter}${config.adapter === "mock" ? " (MOCK/SIMULATED: workers return placeholder results; never claim real commands, network access, or repository changes)" : ""}`,
+  );
   const roots = [...new Set([...(config.allowedProjectRoots || []), config.projectPath, config.cwd].filter(Boolean))];
   lines.push(`PROJECT ROOTS: ${roots.map((root) => shortPath(config, root)).join(", ")}`);
   const projects = listProjects(db);
@@ -147,7 +150,10 @@ export function buildStateCard(
     `PROJECTS: ${
       projects.length
         ? projects
-            .map((project) => `${project.name}@${shortPath(config, project.local_path)}`)
+            .map(
+              (project) =>
+                `${project.name}@${shortPath(config, project.local_path)}[${project.default_adapter || config.adapter}]`,
+            )
             .join(", ")
         : "(none)"
     }`,

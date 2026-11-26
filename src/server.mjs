@@ -222,6 +222,7 @@ function buildState({ db, config, daemon, leader }) {
     ok: true,
     now: Date.now(),
     goal: config.goal,
+    adapter: config.adapter,
     counts: counts(db),
     update: readUpdateCache(db),
     projects: listProjectSummaries(db, config),

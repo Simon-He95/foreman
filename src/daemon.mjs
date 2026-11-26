@@ -638,6 +638,7 @@ export class Daemon {
         title: fresh.title,
         result: asText(outcome.result),
         threadId: fresh.thread_id,
+        adapter: fresh.adapter,
         durationMs: ts - (fresh.started_at || fresh.created_at),
         model: fresh.model,
         effort: fresh.effort,
@@ -646,7 +647,13 @@ export class Daemon {
       notifyMaster(
         this.db,
         this.config,
-        `✅ 完成：${fresh.title}（${fresh.id}）· ${formatDuration(ts - (fresh.started_at || fresh.created_at))}\n${String(asText(outcome.result) || "").slice(0, 1200)}\n\n需要完整过程或细节，直接在主会话里问 Foreman。`,
+        `${
+          fresh.adapter === "mock" ? "🧪 MOCK " : ""
+        }✅ 完成：${fresh.title}（${fresh.id}）· ${formatDuration(ts - (fresh.started_at || fresh.created_at))}\n${String(asText(outcome.result) || "").slice(0, 1200)}\n\n${
+          fresh.adapter === "mock"
+            ? "这是演练结果，不是真实执行。需要真实数据请在 foreman.config.json 设置 adapter=t3，并把 default project adapter 切到 t3。"
+            : "需要完整过程或细节，直接在主会话里问 Foreman。"
+        }`,
         fresh.master_thread_id,
       );
     } else if (status === "failed") {
@@ -655,6 +662,7 @@ export class Daemon {
         title: fresh.title,
         error,
         threadId: fresh.thread_id,
+        adapter: fresh.adapter,
         attempts: fresh.attempts,
         model: fresh.model,
         effort: fresh.effort,
@@ -671,6 +679,7 @@ export class Daemon {
         title: fresh.title,
         error,
         threadId: fresh.thread_id,
+        adapter: fresh.adapter,
         model: fresh.model,
         effort: fresh.effort,
       });

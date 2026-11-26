@@ -539,7 +539,7 @@ async function askForeman(
       out = `⚠️ FC 调用失败，已回退到规则汇报。\n\n${out}`;
     }
     const completedActions = applied.filter((entry) => !entry?.pending);
-    if (completedActions.length) {
+    if (completedActions.length && process.env.FOREMAN_ACP_SHOW_ACTIONS === "1") {
       out += `\n\n动作：${JSON.stringify(completedActions)}`;
     }
     return {

@@ -148,6 +148,8 @@
     }
     .session-banner .session-ref code { color: var(--ink); font-size: 9px; }
     .session-banner .session-ref .btn.hidden { display: none; }
+    .adapter-warning { color: var(--red); font-family: var(--mono); font-size: 9px; }
+    .adapter-warning.hidden { display: none; }
     .chips { display: flex; gap: 18px; flex-wrap: wrap; flex: 1; justify-content: flex-end; }
     .chip {
       display: inline-flex; align-items: baseline; gap: 5px;
@@ -704,6 +706,7 @@
         <span>主会话长期在线：接活、分派、盯进度；所有任务结果和细节都直接问它。</span>
         <span class="session-ref">
           <code id="session-id">未绑定主会话</code>
+          <span class="adapter-warning hidden" id="adapter-warning">MOCK · 任务是演练，不执行真实命令</span>
           <button class="btn small hidden" id="copy-session" type="button">复制 id</button>
         </span>
       </div>
@@ -1921,6 +1924,7 @@
         ? `唯一主会话：${masterThreadId}`
         : "尚未绑定 master thread；先运行 foreman master create";
       $("session").className = `pill ${masterThreadId ? "live" : "dead"}`;
+      $("adapter-warning").classList.toggle("hidden", data.adapter !== "mock");
       $("setup-panel").classList.toggle("hidden", Boolean(masterThreadId));
       $("quick").classList.toggle("hidden", !masterThreadId);
       $("ask-form").classList.toggle("hidden", !masterThreadId);

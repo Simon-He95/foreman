@@ -1536,6 +1536,7 @@ test("state card and rule reply reflect the ledger, not memory", async () => {
 
     const card = buildStateCard(db, config);
     assert.match(card, /TOTALS: total=2 queued=1 running=1/);
+    assert.match(card, /ADAPTER: mock/);
     assert.match(card, /running-task/);
     assert.match(card, /queued-task/);
     assert.match(card, /thread=mock_running/);

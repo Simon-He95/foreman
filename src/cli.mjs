@@ -831,6 +831,17 @@ async function commandAsk(flags, positional) {
 async function commandUp(flags) {
   const { config, db } = open(overridesFromFlags(flags));
   const logger = makeLogger("[foreman]");
+  if (config.adapter === "mock") {
+    logger.warn(
+      `[foreman] ADAPTER=mock: tasks are simulated and do not run real commands or read real repositories.${fs.existsSync(config.configPath) ? "" : ` No ${config.configPath} found; initialize with foreman init --adapter t3 for real work.`}`,
+    );
+    const defaultProject = getProject(db, "default");
+    if (defaultProject && defaultProject.default_adapter === "mock") {
+      logger.warn(
+        "[foreman] default project adapter=mock; switching config to t3 also requires: foreman project set default --adapter t3",
+      );
+    }
+  }
   const adapters = createAdapterRegistry(config);
   const daemon = new Daemon({ db, config, adapters, logger });
   const leader = new Leader({ db, config, daemon, logger });
