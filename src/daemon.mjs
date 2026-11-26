@@ -19,6 +19,8 @@ import {
   targetPlanFromResolution,
 } from "./model-catalog.mjs";
 import { notifyMaster } from "./notifier.mjs";
+import { reconcileT3Threads } from "./reconcile.mjs";
+import { checkForUpdate } from "./update.mjs";
 import { formatDuration } from "./state.mjs";
 
 function asText(value, max = 64000) {
@@ -26,6 +28,11 @@ function asText(value, max = 64000) {
   const text = typeof value === "string" ? value : JSON.stringify(value);
   return text.length > max ? `${text.slice(0, max)}\n…[truncated]` : text;
 }
+
+const THREAD_RECONCILE_INTERVAL_MS = 15 * 60 * 1000;
+const THREAD_RECONCILE_BOOT_DELAY_MS = 8000;
+const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const UPDATE_CHECK_BOOT_DELAY_MS = 6000;
 
 export class Daemon {
   constructor({ db, config, adapters, logger = console }) {
@@ -36,6 +43,10 @@ export class Daemon {
     this.timer = null;
     this.ticking = false;
     this.stopping = false;
+    this.threadReconcileTimer = null;
+    this.threadReconcileRunning = false;
+    this.updateTimer = null;
+    this.updateCheckRunning = false;
     this.startedAt = Date.now();
     this.lastErrorLog = new Map();
     this.lastEventLog = new Map();
@@ -128,6 +139,8 @@ export class Daemon {
     this.timer = setInterval(() => {
       this.tick().catch((error) => this.logger.error("[daemon] tick failed", error));
     }, this.config.tickMs);
+    this.scheduleThreadReconcile("boot", THREAD_RECONCILE_BOOT_DELAY_MS);
+    this.scheduleUpdateCheck("boot", UPDATE_CHECK_BOOT_DELAY_MS);
     this.logger.info(
       `[daemon] started tick=${this.config.tickMs}ms concurrency=${this.config.concurrency} adapters=${Object.keys(this.adapters).join(",")}`,
     );
@@ -136,13 +149,89 @@ export class Daemon {
   async stop() {
     this.stopping = true;
     if (this.timer) clearInterval(this.timer);
+    if (this.threadReconcileTimer) clearTimeout(this.threadReconcileTimer);
+    if (this.updateTimer) clearTimeout(this.updateTimer);
     this.timer = null;
+    this.threadReconcileTimer = null;
+    this.updateTimer = null;
     const deadline = Date.now() + 5000;
-    while (this.ticking && Date.now() < deadline) {
+    while ((this.ticking || this.threadReconcileRunning) && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     // Running workers are intentionally left alive. On the next boot they are
     // re-attached by thread id, or blocked if the thread id was never recorded.
+  }
+
+  scheduleThreadReconcile(reason = "interval", delay = THREAD_RECONCILE_INTERVAL_MS) {
+    if (this.stopping) return;
+    if (this.threadReconcileTimer) clearTimeout(this.threadReconcileTimer);
+    this.threadReconcileTimer = setTimeout(async () => {
+      await this.reconcileThreads(reason);
+      this.scheduleThreadReconcile("interval");
+    }, delay);
+    this.threadReconcileTimer.unref?.();
+  }
+
+  async reconcileThreads(reason = "interval") {
+    if (this.stopping || this.threadReconcileRunning) return;
+    const adapter = this.adapters.t3;
+    if (!adapter) return;
+    this.threadReconcileRunning = true;
+    try {
+      const result = await reconcileT3Threads(this.db, {
+        adapter,
+        apply: true,
+      });
+      if (result.missing.length) {
+        const active = result.missing.filter((item) =>
+          ["queued", "running", "blocked"].includes(item.status),
+        );
+        this.logger.warn(
+          `[daemon] thread reconcile (${reason}): ${result.missing.length} missing, ${result.updated} updated`,
+        );
+        if (active.length) {
+          notifyMaster(
+            this.db,
+            this.config,
+            `⚠️ 自动对账发现 ${active.length} 个活跃任务的 T3 thread 已消失，已标记为失联，不会自动重开：${active.map((item) => item.taskId).join(", ")}`,
+            null,
+          );
+        }
+      }
+    } catch (error) {
+      this.logger.warn(`[daemon] thread reconcile failed: ${error.message}`);
+    } finally {
+      this.threadReconcileRunning = false;
+    }
+  }
+
+  scheduleUpdateCheck(reason = "interval", delay = UPDATE_CHECK_INTERVAL_MS) {
+    if (this.stopping) return;
+    if (this.updateTimer) clearTimeout(this.updateTimer);
+    this.updateTimer = setTimeout(async () => {
+      await this.checkUpdates(reason);
+      this.scheduleUpdateCheck("interval");
+    }, delay);
+    this.updateTimer.unref?.();
+  }
+
+  async checkUpdates(reason = "interval") {
+    if (this.stopping || this.updateCheckRunning) return;
+    this.updateCheckRunning = true;
+    try {
+      const update = await checkForUpdate(this.db, { force: true });
+      if (update.updateAvailable) {
+        this.logger.info(
+          `[daemon] update available (${reason}): ${update.current} -> ${update.latest}`,
+        );
+      } else if (update.error) {
+        this.logger.warn(`[daemon] update check failed: ${update.error}`);
+      }
+    } catch (error) {
+      this.logger.warn(`[daemon] update check failed: ${error.message}`);
+    } finally {
+      this.updateCheckRunning = false;
+    }
   }
 
   async tick() {
@@ -185,10 +274,13 @@ export class Daemon {
           ["done", "failed", "blocked", "cancelled"].includes(outcome.state)
         ) {
           await this.finalize(task, outcome);
+        } else if (outcome.state === "unknown") {
+          await this.markThreadLost(
+            task,
+            outcome.error || "T3 thread no longer exists",
+          );
         } else {
-          await this.requeueOnlyIfStopped(task, outcome.error || "thread not found", {
-            assumeStopped: outcome.state === "unknown",
-          });
+          await this.requeueOnlyIfStopped(task, outcome.error || "thread not found");
         }
       } catch (error) {
         // Keep ownership while the adapter is unreachable. The lease still
@@ -254,9 +346,14 @@ export class Daemon {
         await this.finalize(task, outcome);
         continue;
       }
-      await this.requeueOnlyIfStopped(task, outcome.error || "thread unknown", {
-        assumeStopped: outcome.state === "unknown",
-      });
+      if (outcome.state === "unknown") {
+        await this.markThreadLost(
+          task,
+          outcome.error || "T3 thread no longer exists",
+        );
+        continue;
+      }
+      await this.requeueOnlyIfStopped(task, outcome.error || "thread unknown");
     }
   }
 
@@ -310,6 +407,7 @@ export class Daemon {
         worker_id: null,
         attempt_id: null,
         thread_id: null,
+        thread_link: null,
         error: null,
         result: null,
         finished_at: null,
@@ -375,6 +473,7 @@ export class Daemon {
       updateTask(this.db, fresh.id, {
         status: "queued",
         thread_id: null,
+        thread_link: null,
         worker_id: null,
         attempt_id: null,
         lease_until: null,
@@ -401,15 +500,24 @@ export class Daemon {
   async requeueOnlyIfStopped(task, reason, { assumeStopped = false } = {}) {
     let canRequeue = assumeStopped || !task.thread_id;
     let stopError = null;
+    let missing = false;
     if (task.thread_id && !canRequeue) {
       try {
         const stopped = await this.adapterFor(task).stop(task);
+        missing = stopped?.missing === true;
         canRequeue = Boolean(
-          stopped && (stopped.stopped === true || stopped.missing === true),
+          stopped && (stopped.stopped === true || missing),
         );
       } catch (error) {
         stopError = error.message;
       }
+    }
+    if (missing) {
+      await this.markThreadLost(
+        task,
+        `${reason}; T3 thread no longer exists`,
+      );
+      return;
     }
     if (!canRequeue) {
       await this.finalizeBlocked(
@@ -419,6 +527,37 @@ export class Daemon {
       return;
     }
     await this.requeueOrFail(task, reason);
+  }
+
+  async markThreadLost(task, reason) {
+    const fresh = getTask(this.db, task.id) || task;
+    if (fresh.status !== "running") return fresh;
+    const threadId = fresh.thread_id || null;
+    const why = `T3 thread disappeared while running; marked lost, not restarted automatically${threadId ? ` (${threadId})` : ""}${reason ? `: ${reason}` : ""}`;
+    const updated = updateTask(this.db, fresh.id, {
+      status: "lost",
+      thread_id: null,
+      thread_link: null,
+      lease_until: null,
+      heartbeat_at: null,
+      last_polled_at: null,
+      error: why,
+      finished_at: Date.now(),
+    });
+    appendEvent(this.db, fresh.id, "thread_missing", {
+      threadId,
+      reason,
+      action: "marked_lost",
+    });
+    this.stats.lost += 1;
+    this.logger.warn(`[daemon] lost ${fresh.id}: ${why}`);
+    notifyMaster(
+      this.db,
+      this.config,
+      `⚠️ 任务「${fresh.title}」的 T3 thread 已消失，已标记为失联；未自动重开。`,
+      fresh.master_thread_id,
+    );
+    return updated;
   }
 
   async finalizeBlocked(task, reason) {
@@ -580,7 +719,44 @@ export class Daemon {
     return updated;
   }
 
-  retry(taskId) {
+  async retryVerified(taskId) {
+    const task = getTask(this.db, taskId);
+    if (!task) {
+      const error = new Error(`task not found: ${taskId}`);
+      error.status = 404;
+      throw error;
+    }
+    if (
+      task.status === "blocked" &&
+      /cannot confirm the old worker stopped/.test(task.error || "")
+    ) {
+      let stopped = null;
+      let stopError = null;
+      try {
+        stopped = await this.adapterFor(task).stop(task);
+      } catch (error) {
+        stopError = error.message;
+      }
+      if (!(stopped?.stopped === true || stopped?.missing === true)) {
+        const error = new Error(
+          `blocked task may still have a live worker${stopError ? ` (${stopError})` : stopped?.reason ? ` (${stopped.reason})` : ""}`,
+        );
+        error.status = 409;
+        throw error;
+      }
+      // The adapter proved the old thread is missing or terminal. Remember why
+      // in the event log, then let the normal retry path clear thread_id.
+      appendEvent(this.db, task.id, "retry_verified", {
+        threadId: task.thread_id || null,
+        missing: stopped?.missing === true,
+        reason: stopped?.reason || null,
+      });
+      return this.retry(taskId, { verified: true });
+    }
+    return this.retry(taskId);
+  }
+
+  retry(taskId, { verified = false } = {}) {
     const task = getTask(this.db, taskId);
     if (!task) {
       const error = new Error(`task not found: ${taskId}`);
@@ -595,6 +771,7 @@ export class Daemon {
       throw error;
     }
     if (
+      !verified &&
       task.status === "blocked" &&
       /cannot confirm the old worker stopped/.test(task.error || "")
     ) {
@@ -694,6 +871,7 @@ export class Daemon {
       ...(target ? { target } : {}),
       attempts: 0,
       thread_id: null,
+      thread_link: null,
       worker_id: null,
       attempt_id: null,
       lease_until: null,

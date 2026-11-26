@@ -18,7 +18,12 @@ text; this page is the reference.
 | `foreman project list/add/set/enable/disable` | Manage the project registry. |
 | `foreman worker ...` | Enroll, run, drain, resume, revoke, and install workers. |
 | `foreman doctor` | Check Node, T3, providers, DB, port, and auth. |
+| `foreman doctor --reconcile-threads [--yes]` | Maintainer check for T3 thread references; normally automatic in the daemon. |
+| `foreman update [--check]` | Compare the installed version with npm; never installs by itself. |
+| `foreman update --apply --yes` | Install a newer global npm package; refuses while tasks are active or from a source checkout. |
+| `foreman version` | Print the installed `foreman-ops` version. |
 | `foreman backup` / `foreman compact` | Online backup / prune history. |
+| `foreman task prune ...` | Delete terminal task records older than a cutoff; dry-run unless `--yes`. |
 | `foreman reset --yes` | Delete the ledger. |
 | `foreman service` | Print a macOS launchd plist for 24/7 operation. |
 
@@ -76,6 +81,40 @@ Flags override environment variables and `foreman.config.json`. The main set:
 Worker flags are documented in [Workers](workers.md); every config key and
 environment variable is in [Configuration](configuration.md).
 
+## Thread reconciliation and task pruning
+
+Thread reconciliation is automatic. The daemon checks T3 thread references
+shortly after boot and every 15 minutes. A missing thread on an active task is
+marked `lost` and its thread reference is cleared; it is **not** restarted
+automatically. Terminal tasks keep their records but lose dead thread
+references. The event log keeps the old thread id for audit.
+
+Normal users do not need a maintenance button or CLI for this. The task board
+shows active work plus the 20 most recent terminal tasks; **全部历史** reveals
+the rest. The **数据** panel is only for history retention:
+
+1. Choose a retention window.
+2. Click **预览可清理** to see what would be removed.
+3. Confirm **删除记录** to delete terminal task rows and their events/inbox.
+
+Maintainers can run the same thread check manually:
+
+```bash
+foreman doctor --reconcile-threads        # dry-run
+foreman doctor --reconcile-threads --yes  # apply
+```
+
+Terminal tasks can be pruned explicitly from the CLI too:
+
+```bash
+foreman task prune --done --failed --older-than 30d   # dry-run
+foreman task prune --done --failed --older-than 30d --yes
+```
+
+`task prune` accepts `--done`, `--failed`, `--cancelled`, and `--lost`; active
+statuses are rejected. It deletes the task and its events/inbox rows, but never
+touches T3 threads. Use `foreman compact` for event/chat retention separately.
+
 ## T3 provider registration
 
 ```bash
@@ -108,6 +147,32 @@ The selected FC is persisted per T3 master thread. The output also shows
 `standard`, `deep`, `coding`, `default`); each route is a provider + model pair.
 Each task stores the resolved `target_json`, actual reasoning option/value,
 source, and catalog revision; `foreman status --json` exposes those fields.
+
+## Updates
+
+Foreman checks npm for a newer `foreman-ops` shortly after boot and every six
+hours. The result appears in the leader state card and as an **update** pill in
+the dashboard header; the **数据** panel has a manual **检查更新** button.
+
+```bash
+foreman version
+foreman update --check
+foreman update --apply --yes
+```
+
+`update --apply` is deliberately conservative:
+
+- it refuses while `running`, `queued`, or `blocked` tasks exist;
+- it refuses from a source checkout (use `git pull` instead of replacing the
+  source with a global npm install);
+- it backs up the ledger before installing;
+- it restarts the launchd service when that service is installed, and otherwise
+  prints the command to start Foreman manually.
+
+This is a graceful restart, not an in-process hot swap. Foreman itself is
+briefly unavailable, while T3 worker threads stay alive and are reattached by
+thread id. An update is not applied while active tasks are present, so a
+running task is never killed by this command.
 
 ## Release (maintainers)
 

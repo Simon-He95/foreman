@@ -14,6 +14,7 @@ import {
   getWorkerModelRoutes,
 } from "./db.mjs";
 import { mergeModelRoutes, modelRouteText } from "./model-policy.mjs";
+import { readUpdateCache, updateSummary } from "./update.mjs";
 
 export const STATUS_LABEL = {
   queued: "排队",
@@ -164,6 +165,12 @@ export function buildStateCard(
   lines.push(
     `TOTALS: total=${c.total} queued=${c.queued} running=${c.running} blocked=${c.blocked} done=${c.done} failed=${c.failed} lost=${c.lost} cancelled=${c.cancelled}`,
   );
+  const update = readUpdateCache(db);
+  if (update) {
+    lines.push(
+      `UPDATE: ${updateSummary(update)}${update.stale ? " (stale)" : ""}`,
+    );
+  }
   lines.push("");
   lines.push(`RUNNING (${c.running}):`);
   if (running.length === 0) lines.push("- (none)");

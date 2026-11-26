@@ -14,6 +14,7 @@ import {
   getWorkerByTokenHash,
   getWorkerModelRoutes,
   importRunningTask,
+  pruneTasks,
   recentChat,
   recentEvents,
   revokeWorkerToken,
@@ -56,6 +57,7 @@ import {
   resolveTaskProject,
 } from "./registry.mjs";
 import { buildStateCard, contractLabel, formatDuration, shortPath, STATUS_LABEL } from "./state.mjs";
+import { checkForUpdate, readUpdateCache } from "./update.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const HTML_PATH = path.join(__dirname, "..", "public", "index.html");
@@ -220,6 +222,7 @@ function buildState({ db, config, daemon, leader }) {
     now: Date.now(),
     goal: config.goal,
     counts: counts(db),
+    update: readUpdateCache(db),
     projects: listProjectSummaries(db, config),
     workers: workerSnapshot(db),
     tasks: dashboardTasks(db, { terminalLimit: 180 }).map((task) =>
@@ -437,6 +440,38 @@ export function startServer({ db, config, daemon, leader, logger = console }) {
           leaderMode: config.leaderMode,
           workerProtocolVersion: WORKER_PROTOCOL_VERSION,
         });
+        return;
+      }
+
+      if (req.method === "POST" && pathname === "/api/update/check") {
+        requireJson(req);
+        await readBody(req);
+        const update = await checkForUpdate(db, { force: true });
+        json(res, 200, { ok: true, update });
+        return;
+      }
+
+      if (
+        req.method === "POST" &&
+        pathname === "/api/maintenance/prune-tasks"
+      ) {
+        requireJson(req);
+        const body = await readBody(req);
+        const statuses = Array.isArray(body.statuses) ? body.statuses : [];
+        const olderThanDays = Number(body.olderThanDays ?? 30);
+        if (!Number.isFinite(olderThanDays) || olderThanDays < 0) {
+          throw httpError(400, "olderThanDays must be a non-negative number");
+        }
+        try {
+          const result = pruneTasks(db, {
+            statuses,
+            olderThanMs: olderThanDays * 24 * 60 * 60 * 1000,
+            apply: body.apply === true,
+          });
+          json(res, 200, { ok: true, ...result });
+        } catch (error) {
+          throw httpError(400, error.message);
+        }
         return;
       }
 
@@ -728,7 +763,7 @@ export function startServer({ db, config, daemon, leader, logger = console }) {
           const task = daemon.resume(id);
           json(res, 200, { ok: true, task });
         } else {
-          const task = daemon.retry(id);
+          const task = await daemon.retryVerified(id);
           json(res, 200, { ok: true, task });
         }
         return;

@@ -34,6 +34,21 @@ T3 will reject it. Create/bind a new one:
 node src/cli.mjs master create --title "Foreman 主控"
 ```
 
+## A task is `lost` because its T3 thread disappeared
+
+Foreman reconciles T3 thread references shortly after boot and every 15 minutes.
+If a running task's thread no longer exists, the task is marked `lost`; Foreman
+does not silently start a replacement worker. Review the task, then click
+**重试** if you want a new thread.
+
+Terminal tasks with deleted threads keep their history but clear the dead
+`thread_id`/`thread_link` automatically. No maintenance command is required.
+For control-plane diagnosis, the dry-run form is:
+
+```bash
+foreman doctor --reconcile-threads
+```
+
 ## A task is `blocked` with “completion token was not a standalone line”
 
 The worker did not print the token on its own line. Foreman appends an

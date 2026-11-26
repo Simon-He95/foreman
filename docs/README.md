@@ -30,9 +30,10 @@ worker model.
 ## Status and limits
 
 Foreman is 1.3. The ledger, leases, retries, completion contracts, mock and
-T3 adapters, dashboard, workers, native lineage, resolved target plans, schema
-migrations, and macOS CI are implemented and covered by `npm test`. The supported real path is T3 Code
-+ a T3 ACP provider; DimAgent is the reference provider.
+T3 adapters, dashboard, workers, native lineage, resolved target plans,
+automatic T3 thread reconciliation, npm update awareness, schema migrations,
+and macOS CI are implemented and covered by `npm test`. The supported real path
+is T3 Code + a T3 ACP provider; DimAgent is the reference provider.
 
 Known limits:
 

@@ -23,9 +23,12 @@ Foreman is the missing operations layer between you and a coding-agent UI:
 - **Durable ledger** — tasks, leases, attempts, events, inbox, chat. Restarting
   the process does not forget what was running.
 - **Leases, not guesses** — a silent worker is not a completed worker. Missing
-  heartbeats are requeued or failed, not marked done.
+  T3 threads are reconciled and marked `lost` rather than silently restarted;
+  terminal history is kept unless explicitly pruned.
 - **Push completions** — terminal states land in an inbox and wake the leader;
   you do not have to keep asking "are we there yet?".
+- **Update awareness** — checks npm every six hours and surfaces a safe,
+  task-aware update path; no silent hot replacement of running work.
 - **One answer** — counts and status come from `buildStateCard()`, shared by
   the leader, dashboard, API, and notifications.
 - **Proof of work** — optional completion contracts: a token, a non-empty
@@ -248,8 +251,10 @@ Then choose one interface:
 
 The dashboard is optional. If you close the `foreman up` process, queued and
 running tasks stop progressing; restarting `foreman up` reattaches by thread id.
-If you close T3, its worker threads disappear. For unattended 24/7 operation on
-macOS, use `foreman service` and keep T3 running as a service/app as well.
+If you close T3, its worker threads disappear. Foreman reconciles thread
+references automatically, marks affected running tasks `lost`, and does not
+silently start replacement workers. For unattended 24/7 operation on macOS,
+use `foreman service` and keep T3 running as a service/app as well.
 
 Do not run two `foreman up` processes against the same data directory; the pid
 lock will reject the second one.

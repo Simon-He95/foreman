@@ -23,7 +23,9 @@ concepts see [docs/concepts.md](docs/concepts.md); for setup see
    proof that work is done. Terminal states append an inbox event; optional
    contracts add machine-checkable evidence.
 3. **Silence is not success.** Every running task has a lease and a heartbeat.
-   A missing heartbeat is requeued or failed, never silently marked done.
+   A missing heartbeat is reconciled. A missing T3 thread is marked `lost`
+   rather than silently restarted; terminal thread references are cleaned in
+   the background.
 4. **Push, then reconcile.** The leader consumes terminal events in a batch;
    restart follows the same ledger and reattaches live worker threads by id.
 5. **One task, one worker thread.** The unit of delegation is a task. Native
@@ -114,6 +116,7 @@ T3 Code (desktop app or `t3 serve`, default :3773)
 Foreman `up` (:3777)
    ├─ HTTP dashboard + JSON API
    ├─ daemon: resolve target → claim → lease → poll → verify → retry/reattach
+   ├─ thread reconciler: boot + every 15m → missing active = lost; stale links cleared
    ├─ leader loop: drain completion inbox → bounded state card → briefing
    └─ catalog snapshot: T3 provider cache + provenance/staleness
    │
@@ -136,9 +139,11 @@ src/
   leader-options.mjs   FC choices + T3 catalog snapshot/provenance
   model-policy.mjs     tier targets, classification, effort vocabulary
   model-catalog.mjs    target resolution, validation, reasoning plans
+  reconcile.mjs        automatic T3 thread reconciliation and orphan cleanup
   registry.mjs         canonical project identity / project_key
   server.mjs           HTTP API, auth, project-root checks
   state.mjs            bounded state card shared by every surface
+  update.mjs           npm version checks + cached update status
   adapters/            mock and T3 execution adapters
   worker-*.mjs         remote/local worker protocol and runner
 public/

@@ -8,6 +8,18 @@ All notable changes to Foreman are documented here. The format follows
 
 ### Added
 
+- Dashboard **Data** panel for previewing and deleting old terminal task
+  records with an explicit retention window and confirmation.
+- Dashboard task board defaults to active work plus the 20 most recent terminal
+  tasks, with an explicit **全部历史** toggle.
+- Automatic T3 thread reconciliation on daemon boot and every 15 minutes:
+  missing terminal thread references are cleared, and missing active threads
+  are marked `lost` instead of silently starting a duplicate worker.
+- Verified retry for blocked tasks with expired leases: a deleted or terminal
+  T3 thread can be retried safely; a live thread is still refused.
+- npm update checks on daemon boot and every six hours, an **update** status pill
+  in the dashboard, and a **数据 → 检查更新** action. `foreman update --check`
+  and guarded `--apply` refuse to replace active work or a source checkout.
 - Immutable per-task target plans with provider/model, actual reasoning
   option/value, source, and catalog revision. Local daemons and worker
   assignments use the control plane's plan rather than re-resolving a

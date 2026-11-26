@@ -24,6 +24,7 @@ import {
   getTask,
   getWorkerModelRoutes,
   openDb,
+  pruneTasks,
   recentChat,
   revokeWorkerToken,
   SCHEMA_VERSION,
@@ -54,6 +55,7 @@ import {
   normalizeLeaderOverride,
 } from "./leader-options.mjs";
 import { notifyMaster } from "./notifier.mjs";
+import { checkForUpdate, currentVersion, updateSummary } from "./update.mjs";
 import { validateArtifactPath } from "./projects.mjs";
 import {
   ensureDefaultProject,
@@ -61,6 +63,7 @@ import {
   projectSummary,
   resolveTaskProject,
 } from "./registry.mjs";
+import { reconcileT3Threads } from "./reconcile.mjs";
 import { startServer } from "./server.mjs";
 import { buildStateCard, contractLabel, ruleReply } from "./state.mjs";
 import { WorkerRunner } from "./worker-runner.mjs";
@@ -92,6 +95,26 @@ function parseFlags(args) {
     }
   }
   return { flags, positional };
+}
+
+function parseAgeMs(value, fallback = "30d") {
+  const raw = String(value ?? fallback).trim();
+  const match = /^(\d+(?:\.\d+)?)\s*([smhdw])$/i.exec(raw);
+  if (!match) {
+    throw new Error(
+      `invalid --older-than value "${raw}"; use a duration such as 30d, 24h, or 90m`,
+    );
+  }
+  const amount = Number(match[1]);
+  const unit = match[2].toLowerCase();
+  const factor = {
+    s: 1000,
+    m: 60 * 1000,
+    h: 60 * 60 * 1000,
+    d: 24 * 60 * 60 * 1000,
+    w: 7 * 24 * 60 * 60 * 1000,
+  }[unit];
+  return Math.round(amount * factor);
 }
 
 function overridesFromFlags(flags) {
@@ -602,6 +625,67 @@ async function commandModels(flags) {
     console.log(`coding            ${payload.coding || "(provider default)"}`);
     console.log("");
     console.log("source: foreman.config.json / environment; not auto-refreshed from T3");
+  } finally {
+    close(db);
+  }
+}
+
+async function commandTask(flags, positional) {
+  const action = positional[0] || "";
+  if (action !== "prune") {
+    console.error("usage: foreman task prune --done|--failed|--cancelled|--lost [--older-than 30d] [--yes]");
+    process.exitCode = 2;
+    return;
+  }
+
+  const statuses = [];
+  for (const status of ["done", "failed", "cancelled", "lost"]) {
+    if (flags[status]) statuses.push(status);
+  }
+  if (flags.status) {
+    statuses.push(
+      ...String(flags.status)
+        .split(",")
+        .map((status) => status.trim())
+        .filter(Boolean),
+    );
+  }
+  if (statuses.length === 0) {
+    console.error("refusing to prune without an explicit terminal status (--done, --failed, --cancelled, or --lost)");
+    process.exitCode = 2;
+    return;
+  }
+  const olderThanMs = parseAgeMs(flags["older-than"], "30d");
+  const apply = Boolean(flags.yes);
+
+  const { config, db } = open(overridesFromFlags(flags));
+  try {
+    const result = pruneTasks(db, {
+      statuses,
+      olderThanMs,
+      apply,
+    });
+    console.log(
+      `cutoff: ${new Date(result.cutoff).toISOString()} (older than ${flags["older-than"] || "30d"})`,
+    );
+    if (result.candidates.length === 0) {
+      console.log("no matching tasks");
+      return;
+    }
+    for (const task of result.candidates) {
+      console.log(
+        `- ${task.id}  ${task.status.padEnd(9)}  ${new Date(task.prune_at).toISOString()}  ${task.title}`,
+      );
+    }
+    if (!apply) {
+      console.log(
+        `dry-run: ${result.candidates.length} task(s) would be deleted; rerun with --yes`,
+      );
+      return;
+    }
+    console.log(
+      `deleted ${result.deleted} task(s), ${result.events} event(s), ${result.inbox} inbox item(s) from ${config.dbPath}`,
+    );
   } finally {
     close(db);
   }
@@ -1356,7 +1440,48 @@ async function commandDoctor(flags) {
   ]);
   checks.push(["goal", config.goal, true]);
 
+  let reconcileResult = null;
+  if (flags["reconcile-threads"]) {
+    reconcileResult = await reconcileT3Threads(db, {
+      adapter: t3,
+      apply: Boolean(flags.yes),
+    });
+    checks.push([
+      "thread reconcile",
+      `${reconcileResult.checked} checked, ${reconcileResult.missing.length} missing, ${reconcileResult.updated} updated${flags.yes ? "" : " (dry-run)"}`,
+      reconcileResult.errors.length === 0,
+    ]);
+  }
+
   let ok = true;
+  for (const [name, detail, pass] of checks) {
+    if (!pass) ok = false;
+    console.log(`${pass ? "OK  " : "FAIL"}  ${name.padEnd(16)} ${detail}`);
+  }
+  if (reconcileResult) {
+    console.log("");
+    if (reconcileResult.missing.length === 0) {
+      console.log("thread reconcile: no missing T3 threads");
+    } else {
+      for (const item of reconcileResult.missing) {
+        console.log(
+          `thread missing: ${item.taskId} (${item.status}) ${item.threadId} ${item.title}`,
+        );
+      }
+      if (!flags.yes) {
+        console.log("thread reconcile: dry-run; rerun with --yes to apply");
+      } else {
+        console.log(
+          `thread reconcile: applied ${reconcileResult.updated} task update(s)`,
+        );
+      }
+    }
+    for (const error of reconcileResult.errors) {
+      console.log(
+        `thread reconcile error: ${error.taskId} ${error.threadId} ${error.error}`,
+      );
+    }
+  }
   for (const [name, detail, pass] of checks) {
     if (!pass) ok = false;
     console.log(`${pass ? "OK  " : "FAIL"}  ${name.padEnd(16)} ${detail}`);
@@ -1392,6 +1517,77 @@ async function commandCompact(flags) {
     console.log(
       `compacted ${config.dbPath}: events-${result.events} chat-${result.chat} inbox-${result.inbox}`,
     );
+  } finally {
+    close(db);
+  }
+}
+
+async function commandVersion() {
+  console.log(`foreman-ops ${currentVersion()}`);
+}
+
+async function commandUpdate(flags) {
+  const apply = Boolean(flags.apply);
+  const { config, db } = open(overridesFromFlags(flags));
+  try {
+    if (apply && !flags.yes) {
+      throw new Error("refusing to apply an update without --yes");
+    }
+    const update = await checkForUpdate(db, { force: true });
+    console.log(`current: ${update.current}`);
+    console.log(`latest:  ${update.latest || "(unknown)"}`);
+    console.log(`status:  ${updateSummary(update)}`);
+    if (update.error) process.exitCode = 1;
+    if (!apply || !update.updateAvailable) return;
+
+    const active = counts(db);
+    if (active.running || active.queued || active.blocked) {
+      throw new Error(
+        `refusing to update with active tasks (running=${active.running}, queued=${active.queued}, blocked=${active.blocked}); finish/cancel them first`,
+      );
+    }
+    const packageRoot = path.resolve(__dirname, "..");
+    if (fs.existsSync(path.join(packageRoot, ".git"))) {
+      throw new Error(
+        "this is a source checkout; npm global update does not replace it. Pull the source and restart, or install the npm package and use that binary.",
+      );
+    }
+
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const backup = backupDb(
+      db,
+      path.join(config.dataDir, "backups", `pre-update-${stamp}.db`),
+    );
+    console.log(`backup:  ${backup}`);
+
+    const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+    const installed = spawnSync(
+      npm,
+      ["install", "-g", `foreman-ops@${update.latest}`],
+      { stdio: "inherit", timeout: 180000 },
+    );
+    if (installed.status !== 0) {
+      throw new Error(`npm install failed with exit code ${installed.status}`);
+    }
+
+    const uid = typeof process.getuid === "function" ? process.getuid() : null;
+    const serviceLabel = `gui/${uid}/com.foreman.agent`;
+    const service = spawnSync("launchctl", ["print", serviceLabel], {
+      stdio: "ignore",
+    });
+    if (service.status === 0) {
+      const restarted = spawnSync("launchctl", ["kickstart", "-k", serviceLabel], {
+        stdio: "inherit",
+      });
+      if (restarted.status !== 0) {
+        throw new Error("update installed, but launchd restart failed; start it manually");
+      }
+      console.log("updated and restarted the launchd service");
+    } else {
+      console.log(
+        "updated; no launchd service is installed. Restart with `foreman up` when ready.",
+      );
+    }
   } finally {
     close(db);
   }
@@ -1532,8 +1728,13 @@ usage:
   foreman ask "现在什么情况？"
   foreman demo [--duration 25]
   foreman doctor
+  foreman doctor --reconcile-threads [--yes]
+  foreman update [--check]
+  foreman update --apply --yes
+  foreman version
   foreman backup [--out path]
   foreman compact [--keep-events 20000] [--keep-chat 2000] [--consumed-days 7]
+  foreman task prune --done|--failed|--cancelled|--lost [--older-than 30d] [--yes]
   foreman reset --yes
   foreman service > ~/Library/LaunchAgents/com.foreman.agent.plist
 
@@ -1591,6 +1792,17 @@ try {
       break;
     case "doctor":
       await commandDoctor(flags);
+      break;
+    case "update":
+      await commandUpdate(flags);
+      break;
+    case "version":
+    case "--version":
+    case "-v":
+      await commandVersion();
+      break;
+    case "task":
+      await commandTask(flags, positional);
       break;
     case "backup":
       await commandBackup(flags);

@@ -7,6 +7,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { createAdapter, createAdapterRegistry } from "../src/adapters/index.mjs";
+import { T3Adapter } from "../src/adapters/t3.mjs";
 import { ensureAuthToken, hashToken, tokenMatches } from "../src/auth.mjs";
 import { loadConfig } from "../src/config.mjs";
 import { verifyContract } from "../src/contract.mjs";
@@ -30,6 +31,7 @@ import {
   getWorkerModelRoutes,
   importRunningTask,
   openDb,
+  pruneTasks,
   queuedTasks,
   recentChat,
   recentEvents,
@@ -58,10 +60,12 @@ import {
   validateModelTarget,
 } from "../src/model-catalog.mjs";
 import { notifyMaster } from "../src/notifier.mjs";
+import { reconcileT3Threads } from "../src/reconcile.mjs";
 import { resolveProjectPath, validateArtifactPath } from "../src/projects.mjs";
 import { ensureDefaultProject, resolveTaskProject } from "../src/registry.mjs";
 import { startServer } from "../src/server.mjs";
 import { buildStateCard, ruleReply } from "../src/state.mjs";
+import { checkForUpdate, compareVersions, readUpdateCache } from "../src/update.mjs";
 import { claimTasksForWorker, registerWorker } from "../src/worker-broker.mjs";
 import { WORKER_PROTOCOL_VERSION } from "../src/protocol.mjs";
 import { WorkerRunner } from "../src/worker-runner.mjs";
@@ -1447,7 +1451,7 @@ test("kill -9 mid-run reattaches the worker thread and finishes", async () => {
   }
 });
 
-test("expired lease with a missing thread fails after the retry budget", async () => {
+test("expired lease with a missing thread is marked lost instead of restarted", async () => {
   const dir = tempDir();
   const config = testConfig(dir);
   const db = openDb(config.dbPath);
@@ -1472,15 +1476,26 @@ test("expired lease with a missing thread fails after the retry budget", async (
     const daemon = new Daemon({ db, config, adapters, logger: quiet });
     await daemon.recoverExpired();
 
-    const failed = getTask(db, task.id);
-    assert.equal(failed.status, "failed");
-    assert.match(failed.error, /lease expired/);
+    const lost = getTask(db, task.id);
+    assert.equal(lost.status, "lost");
+    assert.equal(lost.thread_id, null);
+    assert.match(lost.error, /T3 thread disappeared/);
+    assert.equal(lost.lease_until, null);
     assert.ok(
+      recentEvents(db, 20).some(
+        (event) =>
+          event.task_id === task.id &&
+          event.type === "thread_missing" &&
+          event.payload?.action === "marked_lost",
+      ),
+    );
+    assert.equal(daemon.stats.lost, 1);
+    assert.equal(
       unconsumedInbox(db).some(
         (item) => item.kind === "task_failed" && item.task_id === task.id,
       ),
+      false,
     );
-    assert.equal(daemon.stats.failed, 1);
   } finally {
     db.close();
     fs.rmSync(dir, { recursive: true, force: true });
@@ -1927,6 +1942,95 @@ test("retry refuses live or unsafe blocked tasks", () => {
     assert.equal(repaired.effort, "max");
   } finally {
     db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("retryVerified safely requeues a blocked task when its thread is gone", async () => {
+  const dir = tempDir();
+  const config = testConfig(dir);
+  const db = openDb(config.dbPath);
+  try {
+    const task = addTask(db, {
+      title: "stale-thread",
+      brief: "review",
+      adapter: "mock",
+      projectPath: dir,
+    });
+    updateTask(db, task.id, {
+      status: "blocked",
+      thread_id: "thread-that-was-deleted",
+      error:
+        "lease expired; cannot confirm the old worker stopped; verify thread thread-that-was-deleted manually",
+    });
+
+    let stopCalls = 0;
+    const fake = {
+      name: "mock",
+      async stop() {
+        stopCalls += 1;
+        return { stopped: true, missing: true };
+      },
+      async poll() {
+        return { state: "unknown" };
+      },
+    };
+    const daemon = new Daemon({
+      db,
+      config,
+      adapters: { mock: fake },
+      logger: quiet,
+    });
+    const retried = await daemon.retryVerified(task.id);
+    assert.equal(stopCalls, 1);
+    assert.equal(retried.status, "queued");
+    assert.equal(retried.thread_id, null);
+    assert.equal(retried.error, null);
+
+    updateTask(db, task.id, {
+      status: "blocked",
+      thread_id: "thread-still-live",
+      error:
+        "lease expired; cannot confirm the old worker stopped; verify thread thread-still-live manually",
+    });
+    const live = {
+      ...fake,
+      async stop() {
+        return { stopped: false, reason: "thread is still live" };
+      },
+    };
+    const guarded = new Daemon({
+      db,
+      config,
+      adapters: { mock: live },
+      logger: quiet,
+    });
+    await assert.rejects(
+      () => guarded.retryVerified(task.id),
+      /live worker/,
+    );
+  } finally {
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("T3 adapter treats a deleted thread as stopped and missing", async () => {
+  const dir = tempDir();
+  try {
+    const adapter = new T3Adapter({
+      t3Bin: "t3",
+      projectPath: dir,
+    });
+    adapter.call = async () => ({
+      code: 0,
+      stdout: "Thread mcp:gone is no longer available.\n",
+      stderr: "",
+    });
+    const stopped = await adapter.stop({ thread_id: "mcp:gone" });
+    assert.equal(stopped.stopped, true);
+    assert.equal(stopped.missing, true);
+  } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -2846,6 +2950,242 @@ test("dashboardTasks keeps active tasks even when terminal history is longer", (
     assert.equal(rows.filter((task) => task.status === "done").length, 10);
   } finally {
     db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("task prune requires terminal statuses and supports dry-run", () => {
+  const dir = tempDir();
+  const db = openDb(path.join(dir, "prune.db"));
+  try {
+    const oldDone = addTask(db, {
+      title: "old done",
+      brief: "x",
+      adapter: "mock",
+      projectPath: dir,
+    });
+    const oldTime = Date.now() - 40 * 24 * 60 * 60 * 1000;
+    updateTask(db, oldDone.id, {
+      status: "done",
+      finished_at: oldTime,
+      updated_at: oldTime,
+    });
+    appendEvent(db, oldDone.id, "old-event", { keep: false });
+    appendInbox(db, "task_done", oldDone.id, { keep: false });
+
+    const recent = addTask(db, {
+      title: "recent done",
+      brief: "x",
+      adapter: "mock",
+      projectPath: dir,
+    });
+    updateTask(db, recent.id, {
+      status: "done",
+      finished_at: Date.now(),
+      updated_at: Date.now(),
+    });
+    const active = addTask(db, {
+      title: "still active",
+      brief: "x",
+      adapter: "mock",
+      projectPath: dir,
+    });
+    updateTask(db, active.id, {
+      status: "running",
+      updated_at: oldTime,
+    });
+
+    assert.throws(
+      () => pruneTasks(db, { statuses: ["running"], apply: false }),
+      /terminal statuses/,
+    );
+    const dry = pruneTasks(db, {
+      statuses: ["done"],
+      olderThanMs: 30 * 24 * 60 * 60 * 1000,
+      apply: false,
+    });
+    assert.equal(dry.candidates.length, 1);
+    assert.equal(dry.deleted, 0);
+    assert.ok(getTask(db, oldDone.id));
+
+    const applied = pruneTasks(db, {
+      statuses: ["done"],
+      olderThanMs: 30 * 24 * 60 * 60 * 1000,
+      apply: true,
+    });
+    assert.equal(applied.deleted, 1);
+    assert.ok(applied.events >= 1);
+    assert.equal(applied.inbox, 1);
+    assert.equal(getTask(db, oldDone.id), null);
+    assert.equal(
+      db.prepare("SELECT COUNT(*) AS n FROM events WHERE task_id = ?").get(oldDone.id).n,
+      0,
+    );
+    assert.ok(getTask(db, recent.id));
+    assert.ok(getTask(db, active.id));
+  } finally {
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("thread reconcile marks missing active tasks lost and clears terminal links", async () => {
+  const dir = tempDir();
+  const db = openDb(path.join(dir, "reconcile.db"));
+  try {
+    const active = addTask(db, {
+      title: "active missing",
+      brief: "x",
+      adapter: "t3",
+      projectPath: dir,
+    });
+    updateTask(db, active.id, {
+      status: "running",
+      thread_id: "thread-missing",
+      thread_link: "https://example.test/missing",
+      lease_until: Date.now() + 60_000,
+    });
+    const done = addTask(db, {
+      title: "terminal missing",
+      brief: "x",
+      adapter: "t3",
+      projectPath: dir,
+    });
+    updateTask(db, done.id, {
+      status: "done",
+      thread_id: "thread-done",
+      thread_link: "https://example.test/done",
+      finished_at: Date.now(),
+    });
+    const live = addTask(db, {
+      title: "live",
+      brief: "x",
+      adapter: "t3",
+      projectPath: dir,
+    });
+    updateTask(db, live.id, {
+      status: "running",
+      thread_id: "thread-live",
+      thread_link: "https://example.test/live",
+    });
+
+    const adapter = {
+      async show(task) {
+        return {
+          state: task.thread_id === "thread-live" ? "running" : "unknown",
+          error: "thread not found",
+        };
+      },
+    };
+    const dry = await reconcileT3Threads(db, { adapter, apply: false });
+    assert.equal(dry.checked, 3);
+    assert.equal(dry.missing.length, 2);
+    assert.equal(dry.updated, 0);
+    assert.equal(getTask(db, active.id).status, "running");
+
+    const applied = await reconcileT3Threads(db, { adapter, apply: true });
+    assert.equal(applied.updated, 2);
+    assert.equal(getTask(db, active.id).status, "lost");
+    assert.equal(getTask(db, active.id).thread_id, null);
+    assert.equal(getTask(db, active.id).thread_link, null);
+    assert.equal(getTask(db, done.id).thread_id, null);
+    assert.equal(getTask(db, done.id).thread_link, null);
+    assert.equal(getTask(db, live.id).status, "running");
+  } finally {
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("daemon auto thread reconcile marks missing active threads lost", async () => {
+  const dir = tempDir();
+  const config = testConfig(dir);
+  const db = openDb(config.dbPath);
+  try {
+    const task = addTask(db, {
+      title: "missing active thread",
+      brief: "x",
+      adapter: "t3",
+      projectPath: dir,
+    });
+    updateTask(db, task.id, {
+      status: "running",
+      thread_id: "thread-missing",
+      thread_link: "https://example.test/missing",
+      lease_until: Date.now() + 60_000,
+    });
+    const adapter = {
+      async show() {
+        return { state: "unknown", error: "thread not found" };
+      },
+    };
+    const daemon = new Daemon({
+      db,
+      config,
+      adapters: { t3: adapter },
+      logger: quiet,
+    });
+    await daemon.reconcileThreads("test");
+    const lost = getTask(db, task.id);
+    assert.equal(lost.status, "lost");
+    assert.equal(lost.thread_id, null);
+    assert.equal(lost.thread_link, null);
+    assert.match(lost.error, /not restarted automatically/);
+  } finally {
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("update version comparison and cache are deterministic", () => {
+  assert.equal(compareVersions("1.3.1", "1.3.0"), 1);
+  assert.equal(compareVersions("v1.3.0", "1.3.0"), 0);
+  assert.equal(compareVersions("1.2.9", "1.3.0"), -1);
+  const dir = tempDir();
+  const db = openDb(path.join(dir, "update.db"));
+  try {
+    setMeta(db, "update_check", JSON.stringify({
+      current: "1.3.0",
+      latest: "1.3.1",
+      updateAvailable: true,
+      checkedAt: Date.now(),
+      registry: "https://registry.npmjs.org",
+      source: "npm",
+      error: null,
+    }));
+    const update = readUpdateCache(db);
+    assert.equal(update.latest, "1.3.1");
+    assert.equal(update.updateAvailable, true);
+    assert.equal(update.stale, false);
+  } finally {
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("update checker fetches npm latest and caches the result", async () => {
+  const server = http.createServer((req, res) => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ name: "foreman-ops", version: "9.9.9" }));
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const dir = tempDir();
+  const db = openDb(path.join(dir, "update-fetch.db"));
+  try {
+    const { port } = server.address();
+    const update = await checkForUpdate(db, {
+      force: true,
+      registry: `http://127.0.0.1:${port}`,
+    });
+    assert.equal(update.latest, "9.9.9");
+    assert.equal(update.updateAvailable, true);
+    assert.equal(update.error, null);
+    const cached = readUpdateCache(db);
+    assert.equal(cached.latest, "9.9.9");
+    assert.equal(cached.updateAvailable, true);
+  } finally {
+    db.close();
+    await new Promise((resolve) => server.close(resolve));
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });

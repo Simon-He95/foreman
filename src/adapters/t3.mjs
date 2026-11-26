@@ -225,7 +225,11 @@ function classify(payload, text) {
   if (/(waiting for (approval|permission|input)|needs? (you|input|approval))/.test(flat)) {
     return { state: "blocked", error: "thread is waiting for a human", raw: null };
   }
-  if (/(not found|no such thread|unknown thread)/.test(flat)) {
+  if (
+    /(not found|no such thread|unknown thread|no longer available|not available|has been (?:deleted|removed)|thread is gone)/.test(
+      flat,
+    )
+  ) {
     return { state: "unknown", error: "thread not found" };
   }
   if (/(\bidle\b|\bcompleted\b|\bfinished\b)/.test(flat)) {
@@ -427,14 +431,29 @@ export class T3Adapter {
   }
 
   async stop(task) {
-    if (!task.thread_id) return { stopped: false };
-    // The T3 thread CLI (0.1.x) exposes start/send/show/list, not stop/interrupt.
-    // Interrupt is available to in-thread agents over MCP, so the daemon leaves
-    // the thread alive and records the cancellation locally.
+    if (!task.thread_id) return { stopped: true, missing: true };
+
+    // The T3 thread CLI (0.1.x) exposes start/send/show/list, not
+    // stop/interrupt. A deleted thread or a terminal thread cannot have a live
+    // worker, so those are safe to retry. A running/blocked thread is not.
+    const outcome = await this.show(task);
+    if (outcome.state === "unknown") {
+      return {
+        stopped: true,
+        missing: true,
+        reason: outcome.error || "thread no longer exists",
+      };
+    }
+    if (["done", "failed", "cancelled"].includes(outcome.state)) {
+      return {
+        stopped: true,
+        reason: `thread is already ${outcome.state}`,
+      };
+    }
     return {
       stopped: false,
       unsupported: true,
-      reason: "t3 thread CLI has no stop/cancel subcommand",
+      reason: "t3 thread CLI has no stop/cancel subcommand; thread is still live",
     };
   }
 

@@ -774,6 +774,72 @@ export function compactDb(
   return result;
 }
 
+const PRUNABLE_TASK_STATUSES = new Set(["done", "failed", "cancelled", "lost"]);
+
+export function pruneTasks(
+  db,
+  { statuses = [], olderThanMs = 30 * 24 * 60 * 60 * 1000, apply = false } = {},
+) {
+  const selected = [...new Set(statuses.map((status) => String(status)))];
+  const invalid = selected.filter((status) => !PRUNABLE_TASK_STATUSES.has(status));
+  if (invalid.length) {
+    throw new Error(
+      `task prune only supports terminal statuses (done, failed, cancelled, lost); refused: ${invalid.join(", ")}`,
+    );
+  }
+  if (selected.length === 0) {
+    throw new Error("task prune requires at least one terminal status");
+  }
+  const age = Number(olderThanMs);
+  if (!Number.isFinite(age) || age < 0) {
+    throw new Error("olderThanMs must be a non-negative number");
+  }
+  const cutoff = now() - age;
+  const marks = selected.map(() => "?").join(", ");
+  const rows = db
+    .prepare(
+      `SELECT id, status, title, finished_at, updated_at, created_at,
+              COALESCE(finished_at, updated_at, created_at) AS prune_at
+       FROM tasks
+       WHERE status IN (${marks})
+         AND COALESCE(finished_at, updated_at, created_at) < ?
+       ORDER BY prune_at ASC`,
+    )
+    .all(...selected, cutoff);
+
+  if (!apply || rows.length === 0) {
+    return { candidates: rows, deleted: 0, events: 0, inbox: 0, cutoff };
+  }
+
+  const ids = rows.map((row) => row.id);
+  const idMarks = ids.map(() => "?").join(", ");
+  let events = 0;
+  let inbox = 0;
+  db.exec("BEGIN");
+  try {
+    events = Number(
+      db
+        .prepare(`DELETE FROM events WHERE task_id IN (${idMarks})`)
+        .run(...ids).changes,
+    );
+    inbox = Number(
+      db
+        .prepare(`DELETE FROM inbox WHERE task_id IN (${idMarks})`)
+        .run(...ids).changes,
+    );
+    const deleted = Number(
+      db
+        .prepare(`DELETE FROM tasks WHERE id IN (${idMarks})`)
+        .run(...ids).changes,
+    );
+    db.exec("COMMIT");
+    return { candidates: rows, deleted, events, inbox, cutoff };
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
 export function recentEvents(db, limit = 50) {
   return db
     .prepare("SELECT * FROM events ORDER BY seq DESC LIMIT ?")

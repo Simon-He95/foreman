@@ -248,6 +248,7 @@ export class Leader {
       "5. 回复与问题匹配；能一句话回答就一句话，不要每次都输出完整状态卡。",
       "6. 汇报 running/blocked 任务时，如果状态卡里有 `https://app.t3.codes/threads/...` 线程链接，原样带上，方便直接点进去。",
       "7. 天气、新闻、价格、网页内容、当前位置等实时信息，主控没有联网工具；不要把“没有接口”当最终答案。缺城市/对象时只问一个短问题；信息足够时 add_task 派给能联网的 worker，brief 写明要查实时数据和输出格式。",
+      "8. 用户问 foreman-ops 更新时，只依据状态卡的 UPDATE 行回答；不要声称已经安装、重启或更新成功。更新 apply 需要用户明确确认，并且不能在活跃任务期间执行。",
       "",
       `【触发】${trigger}`,
       `【用户消息】${message || "（无，仅做一次简报）"}`,
@@ -794,16 +795,16 @@ export class Leader {
               `cannot retry a ${task.status} task; cancel it first`,
             );
           }
-          if (
-            task.status === "blocked" &&
-            /cannot confirm the old worker stopped/.test(task.error || "")
-          ) {
-            throw new Error(
-              "blocked task may still have a live worker; verify it before retrying",
-            );
-          }
-          if (this.daemon) this.daemon.retry(task.id);
+          if (this.daemon) await this.daemon.retryVerified(task.id);
           else {
+            if (
+              task.status === "blocked" &&
+              /cannot confirm the old worker stopped/.test(task.error || "")
+            ) {
+              throw new Error(
+                "blocked task may still have a live worker; verify it before retrying",
+              );
+            }
             updateTask(this.db, task.id, {
               status: "queued",
               attempts: 0,

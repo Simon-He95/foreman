@@ -97,6 +97,8 @@
     }
     .pill.dead { color: var(--red); }
     .pill.warn { color: var(--ochre); }
+    .pill.hidden { display: none; }
+    .pill[type="button"] { cursor: pointer; }
     .goal {
       color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis;
       white-space: nowrap; min-width: 0; padding-left: 16px;
@@ -183,6 +185,7 @@
     .btn.danger { color: var(--accent); border-color: var(--accent); background: transparent; }
     .btn.danger:hover { background: var(--accent); color: var(--paper); }
     .btn.small { padding: 3px 8px; font-size: 10px; }
+    .btn.hidden { display: none; }
     .btn:disabled { opacity: .4; cursor: default; }
 
     .routing-panel {
@@ -414,15 +417,43 @@
     }
     .ask .btn { align-self: flex-end; height: 38px; }
 
-    .workers-panel, details.statecard {
+    .workers-panel, details.statecard, .maintenance-panel {
       border: 1px solid var(--line); border-radius: 0; background: transparent;
       margin-top: 12px;
     }
-    .workers-panel.hidden { display: none; }
-    .workers-panel summary, details.statecard summary {
+    .workers-panel.hidden, .maintenance-panel.hidden { display: none; }
+    .workers-panel summary, details.statecard summary, .maintenance-panel summary {
       cursor: pointer; padding: 7px 10px; font-family: var(--mono);
       font-size: 10px; color: var(--dim); letter-spacing: .07em;
     }
+    .maintenance-panel summary strong { color: var(--ink); }
+    .maintenance-body { border-top: 1px solid var(--line); }
+    .maintenance-section {
+      padding: 11px 12px 12px; border-top: 1px solid var(--line);
+    }
+    .maintenance-section:first-child { border-top: 0; }
+    .maintenance-section h4 {
+      margin: 0 0 4px; font-family: var(--mono); font-size: 10px;
+      letter-spacing: .06em; text-transform: uppercase; color: var(--ink);
+    }
+    .maintenance-section p {
+      margin: 0 0 8px; color: var(--muted); font-size: 11.5px; line-height: 1.45;
+    }
+    .maintenance-actions {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    }
+    .maintenance-actions label {
+      display: inline-flex; align-items: center; gap: 5px;
+      color: var(--muted); font-size: 11px;
+    }
+    .maintenance-actions select { padding: 3px 5px; font-size: 10px; }
+    .maintenance-actions .hidden { display: none; }
+    .maintenance-result {
+      margin-top: 8px; font-family: var(--mono); font-size: 10px;
+      color: var(--muted); line-height: 1.6; white-space: pre-wrap;
+    }
+    .maintenance-result .bad { color: var(--red); }
+    .maintenance-result .ok { color: var(--green); }
     .workers-body { border-top: 1px solid var(--line); }
     .worker-row {
       display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
@@ -514,6 +545,7 @@
       <span id="conn" class="pill live">live</span>
       <span id="mode" class="pill">rule</span>
       <span id="workers" class="pill">workers 0</span>
+      <button id="update-pill" class="pill hidden" type="button" title="有可用更新">update</button>
       <span id="uptime" class="mono" style="font-size:10px;color:var(--dim)"></span>
       <span id="goal" class="goal"></span>
     </div>
@@ -525,6 +557,8 @@
         <h1>任务板</h1>
         <div class="chips" id="counts"></div>
         <button class="btn" id="toggle-add">+ 新任务</button>
+        <button class="btn ghost" id="toggle-maintenance" type="button">数据</button>
+        <button class="btn ghost hidden" id="toggle-history" type="button">全部历史</button>
       </div>
 
       <div class="live-strip" id="live-strip"></div>
@@ -605,6 +639,36 @@
         <div id="workers-body" class="workers-body"></div>
       </details>
 
+      <details class="maintenance-panel hidden" id="maintenance-panel">
+        <summary><strong>数据与存储</strong><span id="maintenance-summary">历史任务保留与清理</span></summary>
+        <div class="maintenance-body">
+          <section class="maintenance-section">
+            <h4>版本更新</h4>
+            <p>检查 npm 上的 foreman-ops 版本。更新只在没有活跃任务时通过受监督的重启执行。</p>
+            <div class="maintenance-actions">
+              <button class="btn small" id="check-update" type="button">检查更新</button>
+            </div>
+            <div class="maintenance-result" id="update-result"></div>
+          </section>
+          <section class="maintenance-section">
+            <h4>历史任务</h4>
+            <p>执行线程引用由后台自动对账。这里只清理已经结束的本地任务记录，不会触碰正在运行或等待中的任务。</p>
+            <div class="maintenance-actions">
+              <label>保留最近
+                <select id="prune-age">
+                  <option value="30">30 天</option>
+                  <option value="90">90 天</option>
+                  <option value="365">1 年</option>
+                </select>
+              </label>
+              <button class="btn small" id="preview-prune" type="button">预览可清理</button>
+              <button class="btn small danger" id="apply-prune" type="button" disabled>删除记录</button>
+            </div>
+            <div class="maintenance-result" id="prune-result"></div>
+          </section>
+        </div>
+      </details>
+
       <details class="statecard">
         <summary>权威状态卡（leader 实际看到的原文）</summary>
         <pre id="state-card"></pre>
@@ -641,6 +705,7 @@
       authRequired: false,
       routeDirty: false,
       routeSignature: null,
+      showAllTasks: false,
     };
 
     const $ = (id) => document.getElementById(id);
@@ -775,6 +840,113 @@
         alert(error.message);
       }
       refresh();
+    }
+
+    function maintenanceText(id, text, kind = "") {
+      const box = $(id);
+      box.className = `maintenance-result${kind ? ` ${kind}` : ""}`;
+      box.textContent = text;
+    }
+
+    async function maintenancePost(path, payload) {
+      const response = await apiFetch(path, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (response.status === 401) { showGate("令牌无效或已失效"); return null; }
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      return data;
+    }
+
+    let pruneCandidateCount = 0;
+
+    function updateText(update) {
+      if (!update) return "尚未检查更新。";
+      if (update.error) return `检查失败：${update.error}`;
+      if (update.updateAvailable) {
+        return `发现新版本 ${update.latest}（当前 ${update.current}）。更新会优雅重启控制面，运行中的 T3 worker 不受影响；当前有活跃任务时不会执行。`;
+      }
+      return `已是最新版本 ${update.current}。`;
+    }
+
+    async function checkUpdate() {
+      const button = $("check-update");
+      button.disabled = true;
+      maintenanceText("update-result", "正在检查 npm 上的 foreman-ops…");
+      try {
+        const data = await maintenancePost("/api/update/check", {});
+        if (!data) return;
+        maintenanceText(
+          "update-result",
+          updateText(data.update),
+          data.update?.updateAvailable ? "bad" : "ok",
+        );
+        if (state.data) {
+          state.data.update = data.update;
+          renderUpdate(data.update);
+        }
+      } catch (error) {
+        maintenanceText("update-result", `检查失败：${error.message}`);
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    async function previewPrune() {
+      const button = $("preview-prune");
+      button.disabled = true;
+      const olderThanDays = Number($("prune-age").value) || 30;
+      maintenanceText("prune-result", "正在查找旧任务…");
+      try {
+        const data = await maintenancePost("/api/maintenance/prune-tasks", {
+          statuses: ["done", "failed", "cancelled", "lost"],
+          olderThanDays,
+          apply: false,
+        });
+        if (!data) return;
+        pruneCandidateCount = data.candidates.length;
+        const lines = [];
+        if (!pruneCandidateCount) {
+          lines.push("没有可清理的历史任务。");
+        } else {
+          lines.push(`可清理 ${pruneCandidateCount} 个任务（保留最近 ${olderThanDays} 天）。`);
+          for (const task of data.candidates.slice(0, 8)) {
+            lines.push(`· ${task.id}  ${task.status}  ${task.title}`);
+          }
+          if (pruneCandidateCount > 8) lines.push(`· …还有 ${pruneCandidateCount - 8} 个`);
+        }
+        maintenanceText("prune-result", lines.join("\n"), pruneCandidateCount ? "bad" : "ok");
+        $("apply-prune").disabled = pruneCandidateCount === 0;
+      } catch (error) {
+        maintenanceText("prune-result", `预览失败：${error.message}`);
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    async function applyPrune() {
+      if (!pruneCandidateCount) return;
+      if (!confirm(`永久删除 ${pruneCandidateCount} 个历史任务及其事件/inbox？\n\n不会删除 T3 thread。`)) return;
+      const button = $("apply-prune");
+      button.disabled = true;
+      const olderThanDays = Number($("prune-age").value) || 30;
+      try {
+        const data = await maintenancePost("/api/maintenance/prune-tasks", {
+          statuses: ["done", "failed", "cancelled", "lost"],
+          olderThanDays,
+          apply: true,
+        });
+        if (!data) return;
+        pruneCandidateCount = 0;
+        maintenanceText("prune-result", `已删除 ${data.deleted} 个任务记录。`, "ok");
+        refresh({ force: true });
+      } catch (error) {
+        maintenanceText("prune-result", `清理失败：${error.message}`);
+      } finally {
+        button.disabled = true;
+      }
     }
 
     function taskCard(task) {
@@ -1130,6 +1302,47 @@
       }
     }
 
+    const TASK_HISTORY_LIMIT = 20;
+
+    function renderUpdate(update) {
+      const pill = $("update-pill");
+      const available = Boolean(update?.updateAvailable);
+      pill.classList.toggle("hidden", !available);
+      pill.className = `pill${available ? " warn" : " hidden"}`;
+      if (available) {
+        pill.textContent = `update ${update.latest}`;
+        pill.title = `当前 ${update.current}，最新 ${update.latest}`;
+      }
+      const result = $("update-result");
+      if (result && !result.textContent) {
+        result.textContent = updateText(update);
+        result.className = `maintenance-result${update?.updateAvailable ? " bad" : " ok"}`;
+      }
+    }
+
+    function renderTaskList(tasks) {
+      const active = tasks.filter((task) =>
+        ["queued", "running", "blocked"].includes(task.status),
+      );
+      const terminal = tasks
+        .filter((task) => !["queued", "running", "blocked"].includes(task.status))
+        .sort(
+          (a, b) =>
+            (b.finished_at || b.updated_at || 0) -
+            (a.finished_at || a.updated_at || 0),
+        );
+      const button = $("toggle-history");
+      button.classList.toggle("hidden", terminal.length <= TASK_HISTORY_LIMIT);
+      button.textContent = state.showAllTasks
+        ? "只看最近"
+        : `全部历史 (${terminal.length})`;
+      renderTasks(
+        state.showAllTasks
+          ? tasks
+          : [...active, ...terminal.slice(0, TASK_HISTORY_LIMIT)],
+      );
+    }
+
     function renderTasks(tasks) {
       const box = $("tasks");
       const sorted = [...tasks].sort((a, b) => statusOrder(a) - statusOrder(b) || b.priority - a.priority);
@@ -1246,8 +1459,9 @@
         ),
       );
       renderCounts(data.counts);
+      renderUpdate(data.update);
       renderLive(data.tasks, data.counts);
-      renderTasks(data.tasks);
+      renderTaskList(data.tasks);
       renderWorkers(data.workers || []);
       renderChat(data.chat);
       document.title = `Foreman · ${data.counts.running} 跑 / ${data.counts.queued} 排 / ${data.counts.blocked} 等人`;
@@ -1433,6 +1647,27 @@
       const text = event.target.closest("button")?.textContent;
       if (text) ask(text);
     });
+
+    function openMaintenancePanel() {
+      const panel = $("maintenance-panel");
+      panel.classList.remove("hidden");
+      panel.open = true;
+      panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+
+    $("toggle-maintenance").addEventListener("click", () => {
+      const panel = $("maintenance-panel");
+      panel.classList.toggle("hidden");
+      if (!panel.classList.contains("hidden")) openMaintenancePanel();
+    });
+    $("update-pill").addEventListener("click", openMaintenancePanel);
+    $("check-update").addEventListener("click", checkUpdate);
+    $("toggle-history").addEventListener("click", () => {
+      state.showAllTasks = !state.showAllTasks;
+      if (state.data) renderTaskList(state.data.tasks);
+    });
+    $("preview-prune").addEventListener("click", previewPrune);
+    $("apply-prune").addEventListener("click", applyPrune);
 
     $("auth-form").addEventListener("submit", async (event) => {
       event.preventDefault();
