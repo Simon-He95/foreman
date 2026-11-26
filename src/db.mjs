@@ -850,6 +850,71 @@ export function recentEvents(db, limit = 50) {
     }));
 }
 
+export function taskEvents(db, taskId, limit = 20) {
+  return db
+    .prepare(
+      "SELECT * FROM events WHERE task_id = ? ORDER BY seq DESC LIMIT ?",
+    )
+    .all(taskId, limit)
+    .map((row) => ({
+      ...row,
+      payload: row.payload ? safeJson(row.payload) : null,
+    }))
+    .reverse();
+}
+
+function searchTerms(query) {
+  const text = String(query ?? "").trim().slice(0, 500);
+  if (!text) return [];
+  const terms = [];
+  for (const word of text.match(/[A-Za-z0-9][A-Za-z0-9_.-]{1,}/g) || []) {
+    terms.push(word);
+  }
+  for (const run of text.match(/[\u3400-\u9fff]{2,}/g) || []) {
+    terms.push(run);
+    for (let i = 0; i + 1 < run.length && terms.length < 16; i += 2) {
+      terms.push(run.slice(i, i + 2));
+    }
+  }
+  if (terms.length === 0) terms.push(text);
+  return [...new Set(terms)].slice(0, 16);
+}
+
+export function searchTasks(db, query, limit = 8) {
+  const text = String(query ?? "").trim().slice(0, 500);
+  const unique = searchTerms(text);
+  if (!unique.length) return [];
+  const fields = ["id", "title", "brief", "result", "error"];
+  const clauses = [];
+  const values = [];
+  for (const term of unique) {
+    for (const field of fields) {
+      clauses.push(`${field} LIKE ?`);
+      values.push(`%${term}%`);
+    }
+  }
+  return db
+    .prepare(
+      `SELECT * FROM tasks WHERE ${clauses.join(" OR ")}
+       ORDER BY COALESCE(finished_at, updated_at, created_at) DESC LIMIT ?`,
+    )
+    .all(...values, limit);
+}
+
+export function searchChat(db, query, limit = 12) {
+  const unique = searchTerms(query);
+  if (!unique.length) return [];
+  const clauses = unique.map(() => "content LIKE ?");
+  const values = unique.map((term) => `%${term}%`);
+  return db
+    .prepare(
+      `SELECT * FROM chat WHERE ${clauses.join(" OR ")}
+       ORDER BY id DESC LIMIT ?`,
+    )
+    .all(...values, limit)
+    .reverse();
+}
+
 export function appendInbox(db, kind, taskId = null, payload = null) {
   db.prepare(
     "INSERT INTO inbox (kind, task_id, payload, created_at) VALUES (?, ?, ?, ?)",

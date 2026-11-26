@@ -2,7 +2,7 @@
   <img src="docs/assets/logo.svg" alt="Foreman 标志" width="520">
 </p>
 
-**给编码 Agent 集群用的常驻控制面。**
+**一个主会话，看住整个编码 Agent 集群。**
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
@@ -11,20 +11,47 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.5-339933.svg)](package.json)
 
-你只和一个 leader 对话。leader 维护任务账本，daemon 把任务租给 worker
-线程；每次完成都会唤醒 leader，并附上一张从 SQLite 生成的状态卡，而不是靠
-模型记忆。
+你只和一个 Foreman 主会话对话。它把活分给任意多个 worker 线程，盯着完整历史，
+接收每次完成通知，并根据 SQLite 账本回答“后来怎么样了”——不靠模型记忆。
+worker 线程只是执行细节，你不需要逐个打开。
+
+这不是“更好的多 agent 编排引擎”，而是套在 T3 原生委派/workflow 原语外面的
+**one-session 运维层**。
 
 ![Foreman 控制面板](docs/assets/dashboard-live.png)
 
 Foreman 补的是你和编码 Agent UI 之间的运维层：
 
+- **一个主会话**：长存活的主会话是唯一入口，接新需求、推动队列、在一个对话里汇总整个集群。
+- **所有细节都能问主会话**：完成结果、失败原因、产物和事件轨迹都在账本里；主会话按需查询，用户不需要打开每个任务 thread。
+- **首启一键绑定**：未绑定主会话时，Dashboard 会检查 T3，并可一键创建/绑定主控，不需要手工拼命令。
 - **持久账本**：任务、租约、attempt、事件、inbox、对话全部落 SQLite；进程重启不会忘记谁在跑。
 - **租约而不是猜测**：worker 静默不等于完成；心跳丢失会重新排队或失败。
 - **完成推送**：终态进入 inbox 并唤醒 leader，不用反复问“跑完没有”。
 - **唯一答案**：计数和任务摘要统一由 `buildStateCard()` 生成，leader、面板、API、通知共用。
 - **完成契约**：可选 token、非空 artifact、内容标记或 git diff，避免“回复了 DONE 但没干活”。
-- **T3 原生 Lineage**：Foreman 主控线程可以把子任务委派成 T3 的 child thread，在 Thread details / Lineage 里直接看到。
+- **可选的 T3 Lineage**：子任务可以在 T3 的 Lineage 里查看，方便调试；但“一个会话”体验不依赖逐个打开 thread。
+
+### 为什么是一个会话
+
+一个长存活的对话就是产品本身，而不是线程列表外面套一层聊天框。主会话持续掌握所有活跃和近期任务，接收完成/失败通知，并能向账本查询某个任务的 brief、结果、错误和事件轨迹。查询发生在同一个会话里，所以只有一个地方问、一个地方答。打开 worker thread 是调试用的逃生口，不是必需流程。
+
+示意对话：
+
+```text
+你：把这三个方向都派出去，难的那个用强模型，做完告诉我结论。
+主会话：已排入队列：A（standard）、B（standard）、C（deep）。C 走强模型。
+
+你：第二个任务为什么失败？它到底跑了什么？
+主会话：我查一下账本。……失败原因是测试命令超时；它先定位到 X，再改了 Y，
+        最后在 Z 上卡住。要我用当前路由重试，还是先看完整事件轨迹？
+```
+
+不需要第二个聊天窗口，不需要 thread 列表，也不需要“请打开 child thread”。
+
+持久性在会话和账本里，而不在某个模型的上下文窗口里。每一轮都会拿到当前状态卡和
+最近对话；更早的任务/对话细节按需查询。T3-backed leader 还会复用一个内部 leader
+thread，而不是每轮新建。
 
 ## 它是什么
 
@@ -32,16 +59,70 @@ Foreman 不是另一个 Agent runtime。[T3 Code](https://t3.codes) 负责执行
 worker UI，T3 ACP provider（DimAgent、Codex、Claude 或兼容实现）提供模型和工具。
 Foreman 提供控制面：排队、租约、重试、恢复、完成契约和状态汇总。
 
+它也不是 workflow engine。T3 原生 Workflows 负责确定性流水线、定时任务、
+webhook 和审批；Foreman 负责围绕它们的动态队列：新请求、优先级、模型路由、
+状态，以及“到底发生了什么”的查询。两者组合，而不是重复造轮子。
+
+### T3 原生能力 vs Foreman
+
+T3 Code 已经提供执行底座：
+
+- **Thread / run**：provider/model 选择、审批、diff、worktree。
+- **原生委派**：父 run 活跃时，`delegate_task` 可以创建带 lineage 的 child thread。
+- **原生 Workflows**：确定性的 TypeScript 流水线，支持 schedule、webhook、审批、checkpoint、重试和并发池。部分 T3 版本里它是 Labs 功能，需要到 Settings → Labs → Workflows 开启。
+- **Thread UI / 移动端**：逐个查看和驱动 worker。
+
+Foreman 刻意不重造这些原语，只补“持续到来的动态工作”所缺的运维层：
+
+| 问题 | T3 原生 | Foreman |
+| --- | --- | --- |
+| 怎么派一个 agent？ | 新建 thread，或在父 run 里 `delegate_task` | 同样用 T3 执行，但前面有持久队列和优先级 |
+| 怎么跑一个固定的多阶段流程？ | 原生 Workflows | 交给 T3 Workflows；Foreman 不做 workflow engine |
+| 哪里看整个集群的统一对话？ | 每个 thread 各自一个对话 | 一个长存活的 master session 是唯一入口 |
+| 之前那段讨论在哪？ | 去对应 thread 翻历史 | 直接问主会话；它会查 SQLite 里的持久对话历史 |
+| 怎么长期跟踪临时工作？ | Thread 列表和 run 状态 | SQLite 账本：queued/running/blocked/done/failed/lost、attempt、lease |
+| 崩溃或静默后怎么办？ | T3 thread 状态还在 | 心跳、租约、重试、lost 检测、thread 对账、重新附着 |
+| “任务 X 到底发生了什么？” | 打开 child thread 自己读 | 直接问主会话；它查询账本后在同一会话回答 |
+| 一批任务怎么选模型？ | 每个 thread 单独选 | 按难度/类别集中路由，也支持单任务覆盖 |
+| 怎么确认 worker 真的完成？ | 看 thread/run | 可选完成契约：token、artifact、内容标记或 git diff |
+| 真正的 UI 是什么？ | Thread/worker UI | 主会话；Dashboard 是二级运维面，worker thread 只是调试细节 |
+
+**分工**
+
+- 确定性、重复、带 schedule/webhook/审批的流程 → **T3 Workflows**。
+- 对话里的一次性 child-agent 步骤 → **T3 `delegate_task`**。
+- 持续到来的临时请求，需要统一会话、优先级、路由、恢复和“到底发生了什么” → **Foreman**。
+
+只需要一个 thread、一个任务，或者固定流水线时，直接用 T3 就够；
+当工作是一个不断变化的队列、而用户不应该被迫管理 thread 列表时，用 Foreman。
+
+**设计规则**
+
+1. **主会话就是产品。** 一个长存活对话是用户界面；child thread 只是执行细节，不是必访页面。
+2. **账本是真相。** 状态、结果、失败和细节从 SQLite 读取，不靠模型记忆或 thread 列表重建。
+3. **查询优于开 thread。** 状态卡只有摘要时，主会话向账本做有界任务查询或 `chat:` 对话查询，然后在同一个会话里回答。
+4. **动态任务排队，确定性任务交给 T3。** Foreman 负责优先级、租约、重试、恢复和路由；T3 负责 agent runtime 和原生 workflows。
+5. **契约是证据，不是证明。** 可以要求 token、artifact 或 diff；语义正确性仍需人判断。
+6. **T3 Lineage 是可选项。** 它是调试视图，不是 one-session 体验。
+
+所以 Foreman 既不是“再加一层编排”，也不是 T3 的替代品；它是人和 agent 集群之间的
+**one-session 运维层**。完整设计原则、模块地图和非目标见 [DESIGN.md](DESIGN.md)。
+
 ```text
-你 ── 对话 + 任务板 ──> Foreman leader (rule | claude | codex | dim)
-                          │
-               SQLite: tasks / events / inbox / chat
-                          │
-               daemon: claim → lease → poll → retry → reattach
-                          │
-               adapter: mock | t3
-                          │
-                T3 Code ──> thread ──> Claude / Codex / Dim / ACP agent
+你 ── 一个主会话 ──> Foreman leader (rule | claude | codex | dim)
+                        │  ▲
+                        │  └── 任务详情查询（SQLite）
+             SQLite: tasks / events / inbox / chat
+                        │
+             daemon: claim → lease → poll → retry → reattach
+                        │
+             adapter: mock | t3
+                        │
+              T3 Code ──> worker thread ──> Claude / Codex / Dim / ACP
+                        └── 执行细节，不是用户界面
+
+确定性 / 定时 / 审批流程 ──> T3 原生 Workflows
+                 （Foreman 不重复实现这个 engine）
 ```
 
 T3 可以单独使用；Foreman 也可以在 `mock` 模式下完全不依赖 T3 运行。
@@ -163,9 +244,15 @@ foreman up --adapter t3 --leader dim
 foreman master create --title "Foreman"
 ```
 
+如果没有绑定主控，Dashboard 会显示 **first-run 面板**：检查 T3、展示默认 FC/项目，
+并可以一键创建并绑定主控。
+
+![主会话首启绑定](docs/assets/first-run.png)
+
 然后在 T3 新建 thread，provider 选 **Foreman (control plane)**，直接说话。
-主控只读状态、建/取消/重试任务；真正干活的是 worker 线程。也可以不用主控，
-直接用面板/CLI；主控只是增加 T3 内对话和完成通知。
+这就是正常的 one-session 路径：主控读状态、建/取消/重试任务、接收完成通知，
+并从账本回答任务细节。真正干活的是 worker 线程，但你不需要打开它们。
+面板/CLI 仍然存在，是运维备用入口，不是主要交互方式。
 
 已有主控线程时：
 
@@ -196,10 +283,10 @@ top-level worker。详见 [原生 Lineage](docs/native-lineage.md)。
 
 之后选一个入口：
 
-- **T3 主控**：打开绑定的 thread（`foreman master show`）直接说话。
+- **T3 主控（推荐）**：打开绑定的 thread（`foreman master show`）直接说话。
   首次用 `foreman master create --title "Foreman"` 创建；provider 选
-  **Foreman (control plane)**。
-- **Dashboard / CLI**：打开 `http://127.0.0.1:3777`，或在另一个终端执行
+  **Foreman (control plane)**。所有任务结果和细节都在这里问。
+- **Dashboard / CLI（运维备用）**：打开 `http://127.0.0.1:3777`，或在另一个终端执行
   `foreman add ...` / `foreman status`。
 
 Dashboard 是可选的。关掉 `foreman up` 后任务不会继续推进；重启后 daemon 会按

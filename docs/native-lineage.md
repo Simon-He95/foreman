@@ -1,7 +1,11 @@
 # Native lineage
 
-Foreman can create a task as a real T3 **subagent child thread** under the
-master. This is what makes the T3 Thread details / Lineage panel useful.
+Native lineage is **optional**. The one-session interface does not depend on
+opening child threads; query the master for task results and details.
+
+When available, Foreman can create a task as a real T3 **subagent child thread**
+under the master. This makes the T3 Thread details / Lineage panel useful for
+debugging an execution.
 
 ## Flow
 
@@ -14,8 +18,8 @@ master. This is what makes the T3 Thread details / Lineage panel useful.
    - `parentThreadId = master thread id`
    - `relationshipToParent = subagent`
 6. Foreman calls `POST /api/tasks/import` and records the child as a running task.
-7. The daemon polls the child, verifies the completion contract, and notifies the
-   master.
+7. The daemon polls the child, verifies the completion contract, notifies the
+   master, and leaves details available through master task lookup.
 
 ## Requirements
 

@@ -2,8 +2,18 @@
 
 ## Master thread
 
-A T3 thread whose provider is **Foreman (control plane)**. It is a chat
-surface for the Foreman leader. It does not execute project work; it delegates.
+A T3 thread whose provider is **Foreman (control plane)**. It is the user's
+long-lived, single session with the fleet: it takes requests, delegates work,
+absorbs completion notifications, and answers for every task. It does not
+execute project work itself.
+
+Worker threads are execution details. The user should not need to open them to
+learn what happened; ask the master instead.
+
+The T3-backed leader also reuses one **internal leader thread** per master,
+provider, model, and effort, so its own context is long-lived instead of
+creating a new “leader turn” thread every message. Other leader backends
+(`dim`, `dima`, `codex`, `claude`) reconstruct context from SQLite each turn.
 
 A thread with provider `dim`, `codex`, or `claude` is a worker/chat thread and
 will do work directly. It is not the Foreman master.
@@ -26,8 +36,10 @@ completion contract, model, and effort. States:
 
 `queued → running → done | failed | blocked | cancelled`
 
-A task created by the master is a **native T3 child thread**. A task created by
-`foreman add` or an automatic leader wakeup is a top-level T3 thread.
+A task created by the master may be a **native T3 child thread** when lineage is
+available. A task created by `foreman add` or an automatic leader wakeup is a
+top-level T3 thread. In both cases the user-facing interface remains the master
+session.
 
 ## Native lineage
 
@@ -44,7 +56,8 @@ When the master and task share a project, the ACP agent calls T3
 }
 ```
 
-The T3 thread details/Lineage panel can then open the child directly.
+The T3 thread details/Lineage panel can then open the child directly for
+debugging. This is optional and not part of the normal one-session workflow.
 
 ## Model and effort
 
@@ -74,11 +87,22 @@ Terminal states are pushed with `t3 thread send` to the bound master:
 ```text
 📣 Foreman：✅ 完成：任务标题（tsk_...）· 4s
 <result>
-https://app.t3.codes/threads/.../...
+
+需要完整过程或细节，直接在主会话里问 Foreman。
 ```
 
 The master ACP agent recognizes the notification marker and ends that turn
 without calling the leader, so notifications do not create a second leader turn.
+
+## Task lookup
+
+The state card carries summaries: active tasks, recent completions, and recent
+failures. When the user asks for more detail, the leader can emit a `lookup`
+instead of guessing or sending the user to a worker thread. Foreman reads the
+task and its last events from SQLite, appends that detail to the next leader
+call, and the master answers in the same conversation. `lookup: "chat:<terms>"`
+opens the durable conversation history instead of the task ledger; a task miss
+also falls back to chat search. Lookup is bounded to one object per user turn.
 
 ## Trust boundaries
 

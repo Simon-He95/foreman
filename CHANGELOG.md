@@ -8,6 +8,25 @@ All notable changes to Foreman are documented here. The format follows
 
 ### Added
 
+- **One-session interface**: the long-lived master thread is the primary
+  product surface. It receives all completions and can answer task details
+  without opening worker threads.
+- Master **task and conversation lookup** for details that are not in the state
+  card. The leader can request a bounded SQLite lookup (task brief, result,
+  error, contract, and recent events, or `chat:` history), then answer in the
+  same conversation.
+- Explicit `tsk_...` references in a master message preload that task's ledger
+  detail, so ID-based questions do not require a second round trip.
+- T3-backed leader sessions are reused per master/provider/model instead of
+  creating a new internal “Foreman leader turn” thread on every message.
+- Dashboard first-run panel when no master is bound: checks T3, shows the
+  default FC/project, and can create and bind the master via
+  `POST /api/master/create` or fall back to the CLI command.
+- Dashboard interaction pass: master chat is first on narrow windows, model
+  routing/results/errors collapse, tasks can be filtered and sent to the master
+  with one click, and the bound session id is copyable.
+- Dashboard copy and task cards now center the master session; execution thread
+  links were removed from notifications and de-emphasized in the board.
 - Dashboard **Data** panel for previewing and deleting old terminal task
   records with an explicit retention window and confirmation.
 - Dashboard task board defaults to active work plus the 20 most recent terminal
@@ -17,6 +36,10 @@ All notable changes to Foreman are documented here. The format follows
   are marked `lost` instead of silently starting a duplicate worker.
 - Verified retry for blocked tasks with expired leases: a deleted or terminal
   T3 thread can be retried safely; a live thread is still refused.
+- Clear product boundary: T3 native Workflows own deterministic pipelines,
+  schedules, webhooks, and approvals; Foreman owns the dynamic task queue.
+  Dashboard adds a read-only T3 Workflows status check instead of rebuilding
+  the workflow engine.
 - npm update checks on daemon boot and every six hours, an **update** status pill
   in the dashboard, and a **数据 → 检查更新** action. `foreman update --check`
   and guarded `--apply` refuse to replace active work or a source checkout.

@@ -646,7 +646,7 @@ export class Daemon {
       notifyMaster(
         this.db,
         this.config,
-        `✅ 完成：${fresh.title}（${fresh.id}）· ${formatDuration(ts - (fresh.started_at || fresh.created_at))}\n${String(asText(outcome.result) || "").slice(0, 1200)}${fresh.thread_link ? `\n${fresh.thread_link}` : ""}`,
+        `✅ 完成：${fresh.title}（${fresh.id}）· ${formatDuration(ts - (fresh.started_at || fresh.created_at))}\n${String(asText(outcome.result) || "").slice(0, 1200)}\n\n需要完整过程或细节，直接在主会话里问 Foreman。`,
         fresh.master_thread_id,
       );
     } else if (status === "failed") {
@@ -663,7 +663,7 @@ export class Daemon {
       notifyMaster(
         this.db,
         this.config,
-        `❌ 失败：${fresh.title}（${fresh.id}）\n${String(error || "").slice(0, 1200)}${fresh.thread_link ? `\n${fresh.thread_link}` : ""}`,
+        `❌ 失败：${fresh.title}（${fresh.id}）\n${String(error || "").slice(0, 1200)}\n\n需要完整过程或细节，直接在主会话里问 Foreman。`,
         fresh.master_thread_id,
       );
     } else if (status === "blocked") {
@@ -678,7 +678,7 @@ export class Daemon {
       notifyMaster(
         this.db,
         this.config,
-        `⛔ 等待人工：${fresh.title}（${fresh.id}）\n${String(error || "").slice(0, 1200)}${fresh.thread_link ? `\n${fresh.thread_link}` : ""}`,
+        `⛔ 等待人工：${fresh.title}（${fresh.id}）\n${String(error || "").slice(0, 1200)}\n\n需要完整过程或细节，直接在主会话里问 Foreman。`,
         fresh.master_thread_id,
       );
     } else {

@@ -58,6 +58,7 @@ import {
 } from "./registry.mjs";
 import { buildStateCard, contractLabel, formatDuration, shortPath, STATUS_LABEL } from "./state.mjs";
 import { checkForUpdate, readUpdateCache } from "./update.mjs";
+import { createMasterSession, masterDefaults } from "./master-session.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const HTML_PATH = path.join(__dirname, "..", "public", "index.html");
@@ -448,6 +449,91 @@ export function startServer({ db, config, daemon, leader, logger = console }) {
         await readBody(req);
         const update = await checkForUpdate(db, { force: true });
         json(res, 200, { ok: true, update });
+        return;
+      }
+
+      if (req.method === "GET" && pathname === "/api/setup") {
+        const masterThreadId = getMeta(db, "master_thread_id");
+        const masterFc = masterThreadId ? getMasterFc(db, masterThreadId) : null;
+        const masterProject = masterThreadId
+          ? getMasterProject(db, masterThreadId)
+          : null;
+        const defaults = masterDefaults(config);
+        let t3 = {
+          configured: config.adapter === "t3",
+          bin: config.t3Bin || null,
+          reachable: null,
+          detail: null,
+        };
+        if (daemon && t3.configured) {
+          try {
+            const health = await daemon.adapterFor({ adapter: "t3" }).health();
+            t3 = {
+              ...t3,
+              reachable: Boolean(health.ok),
+              detail: health.detail || null,
+            };
+          } catch (error) {
+            t3 = { ...t3, reachable: false, detail: error.message };
+          }
+        }
+        json(res, 200, {
+          ok: true,
+          setup: {
+            master: {
+              bound: Boolean(masterThreadId),
+              threadId: masterThreadId || null,
+              fc: masterFc,
+              project: masterProject,
+            },
+            defaults,
+            t3,
+            canCreate:
+              Boolean(daemon) &&
+              !masterThreadId &&
+              config.adapter === "t3",
+          },
+        });
+        return;
+      }
+
+      if (req.method === "POST" && pathname === "/api/master/create") {
+        requireJson(req);
+        const body = await readBody(req);
+        if (getMeta(db, "master_thread_id")) {
+          throw httpError(409, "master thread is already bound");
+        }
+        if (config.adapter !== "t3") {
+          throw httpError(
+            409,
+            "creating a master requires the t3 adapter; configure T3 first or run foreman master create from the CLI",
+          );
+        }
+        const result = await createMasterSession({
+          db,
+          config,
+          leader: body.leader && typeof body.leader === "object" ? body.leader : null,
+          title: body.title
+            ? String(body.title).slice(0, 120)
+            : "Foreman",
+          message: body.message
+            ? String(body.message).slice(0, 500)
+            : "现在什么情况？",
+        });
+        json(res, 201, { ok: true, ...result });
+        return;
+      }
+
+      if (req.method === "GET" && pathname === "/api/t3/workflows") {
+        if (!daemon) throw httpError(503, "daemon is not running");
+        try {
+          const workflows = await daemon
+            .adapterFor({ adapter: "t3" })
+            .workflows();
+          json(res, 200, { ok: true, workflows });
+        } catch (error) {
+          throw httpError(502, error.message);
+        }
         return;
       }
 

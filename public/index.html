@@ -98,7 +98,7 @@
     .pill.dead { color: var(--red); }
     .pill.warn { color: var(--ochre); }
     .pill.hidden { display: none; }
-    .pill[type="button"] { cursor: pointer; }
+    .pill[type="button"], .pill[role="button"] { cursor: pointer; }
     .goal {
       color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis;
       white-space: nowrap; min-width: 0; padding-left: 16px;
@@ -107,7 +107,7 @@
 
     main {
       display: grid;
-      grid-template-columns: minmax(0, 1.55fr) minmax(340px, .85fr);
+      grid-template-columns: minmax(0, 1.35fr) minmax(380px, .95fr);
       gap: 0;
       padding: 0 24px 24px;
       height: calc(100dvh - 58px);
@@ -134,6 +134,20 @@
     }
     .board-head h1::before { content: "01 /"; margin-right: 10px; }
     .chat-head h2::before { content: "02 /"; margin-right: 9px; }
+    .session-banner {
+      display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+      padding: 10px 0 12px; border-bottom: 1px solid var(--line);
+      font-family: var(--mono); font-size: 10px; line-height: 1.6; color: var(--muted);
+    }
+    .session-banner strong {
+      color: var(--accent); font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+    }
+    .session-banner .session-ref {
+      display: inline-flex; align-items: baseline; gap: 6px; margin-left: auto;
+      color: var(--dim); overflow-wrap: anywhere;
+    }
+    .session-banner .session-ref code { color: var(--ink); font-size: 9px; }
+    .session-banner .session-ref .btn.hidden { display: none; }
     .chips { display: flex; gap: 18px; flex-wrap: wrap; flex: 1; justify-content: flex-end; }
     .chip {
       display: inline-flex; align-items: baseline; gap: 5px;
@@ -158,8 +172,10 @@
     .live-strip .live-item {
       display: inline-flex; gap: 6px; align-items: baseline;
       max-width: 320px; padding: 0; border: 0; background: none;
-      color: var(--muted); overflow: hidden;
+      color: var(--muted); overflow: hidden; cursor: pointer;
+      font-family: inherit; font-size: inherit;
     }
+    .live-strip .live-item:hover { color: var(--accent); }
     .live-strip .live-item::before { content: "›"; color: var(--accent); }
     .live-strip .live-item b {
       color: var(--ink); font-weight: 600; overflow: hidden;
@@ -167,6 +183,21 @@
     }
     .live-strip .live-item.bad { color: var(--red); }
     .live-strip .live-item.warn { color: var(--ochre); }
+
+    .task-toolbar {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 0; border-bottom: 1px solid var(--line);
+    }
+    .task-toolbar input {
+      flex: 1; min-width: 0; padding: 5px 8px;
+      border: 1px solid var(--line); background: var(--paper);
+      font-family: var(--mono); font-size: 10px; outline: none;
+    }
+    .task-toolbar input:focus { border-color: var(--ink); outline: 1px solid var(--ink); outline-offset: 0; }
+    .task-toolbar .task-filter-count {
+      color: var(--dim); font-family: var(--mono); font-size: 9px;
+      white-space: nowrap;
+    }
 
     .btn {
       border: 1px solid var(--ink);
@@ -356,14 +387,27 @@
     }
     .meta code.copy:hover { color: var(--accent); border-color: var(--accent); }
     .outcome {
-      margin: 9px 0 0 104px; padding: 7px 9px; border-radius: 0;
+      margin: 9px 0 0 104px; padding: 0; border-radius: 0;
       background: var(--paper-2); border: 1px solid var(--line);
       font-family: var(--mono); font-size: 10.5px; color: #5b554a;
+    }
+    .outcome summary {
+      cursor: pointer; padding: 7px 9px; list-style: none;
+      color: var(--muted); font-family: var(--mono); font-size: 10px;
+      letter-spacing: .03em;
+    }
+    .outcome summary::-webkit-details-marker { display: none; }
+    .outcome summary::before { content: "+"; display: inline-block; width: 12px; color: var(--accent); }
+    .outcome[open] summary::before { content: "−"; }
+    .outcome summary:hover { color: var(--ink); }
+    .outcome .outcome-body {
+      max-height: 260px; overflow: auto; padding: 0 9px 8px;
       white-space: pre-wrap; word-break: break-word;
-      max-height: 90px; overflow: auto;
     }
     .outcome.err { color: var(--red); border-color: var(--accent); }
-    .task .actions { display: flex; gap: 6px; margin: 8px 0 0 104px; justify-content: flex-start; }
+    .task .actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0 104px; justify-content: flex-start; }
+    .task .actions .ask-task { color: var(--accent); border-color: var(--accent); }
+    .task .actions .ask-task:hover { background: var(--accent); color: var(--paper); }
 
     .chat {
       display: flex; flex-direction: column;
@@ -376,10 +420,70 @@
       padding: 14px 16px 12px; border-bottom: 1px solid var(--ink); gap: 10px;
     }
     .chat-head h2 { font-size: 20px; }
+    .chat-tools { display: flex; align-items: baseline; gap: 12px; }
     .chat-head .mode {
       font-family: var(--mono); font-size: 9px; color: var(--dim);
       letter-spacing: .09em; text-transform: uppercase;
     }
+    .chat-jump {
+      border: 0; border-bottom: 1px dotted var(--line); background: none;
+      padding: 0; color: var(--muted); font-family: var(--mono);
+      font-size: 9px; letter-spacing: .04em;
+    }
+    .chat-jump:hover { color: var(--accent); border-color: var(--accent); }
+    .chat-sub {
+      margin: 5px 0 0; font-family: var(--mono); font-size: 9px;
+      letter-spacing: .04em; color: var(--muted);
+    }
+    .chat-sub {
+      margin: 5px 0 0; font-family: var(--mono); font-size: 9px;
+      letter-spacing: .04em; color: var(--muted);
+    }
+    .setup-panel {
+      margin: 12px 16px 0; padding: 14px;
+      border: 1px solid var(--ink); background: var(--paper);
+    }
+    .setup-panel.hidden { display: none; }
+    .setup-kicker {
+      font-family: var(--mono); font-size: 9px; letter-spacing: .12em;
+      color: var(--accent); text-transform: uppercase;
+    }
+    .setup-panel h3 {
+      margin: 4px 0 4px; font-family: var(--serif); font-size: 22px;
+      font-weight: 500; letter-spacing: -.02em;
+    }
+    .setup-panel > p, .setup-step p {
+      margin: 0; color: var(--muted); font-size: 11.5px; line-height: 1.5;
+    }
+    .setup-steps {
+      display: grid; gap: 0; margin: 12px 0 10px; padding: 0;
+      list-style: none; border-top: 1px solid var(--line);
+    }
+    .setup-step {
+      display: grid; grid-template-columns: 32px minmax(0, 1fr);
+      gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--line);
+    }
+    .setup-num {
+      font-family: var(--mono); font-size: 9px; color: var(--accent);
+      padding-top: 2px;
+    }
+    .setup-step strong { display: block; margin-bottom: 2px; font-size: 12px; }
+    .setup-step .setup-state {
+      color: var(--dim); font-family: var(--mono); font-size: 9px;
+    }
+    .setup-step .setup-state.ok { color: var(--green); }
+    .setup-step .setup-state.bad { color: var(--red); }
+    .setup-note { margin-top: 3px !important; color: var(--dim) !important; font-family: var(--mono); font-size: 9px !important; }
+    .setup-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+    .setup-error {
+      color: var(--red); font-family: var(--mono); font-size: 10px;
+      white-space: pre-wrap; margin-top: 8px;
+    }
+    .setup-alt {
+      margin-top: 9px !important; padding-top: 9px; border-top: 1px solid var(--line);
+      font-family: var(--mono); font-size: 9px !important;
+    }
+    .setup-alt code { color: var(--ink); border-bottom: 1px dotted var(--line); }
     .messages {
       flex: 1; overflow: auto; padding: 15px 16px;
       display: flex; flex-direction: column; gap: 14px; min-height: 0;
@@ -399,9 +503,26 @@
     .msg.user .body { background: var(--paper-3); border-color: #cdbda5; }
     .msg.leader .body { background: transparent; }
     .msg.pending .body { color: var(--muted); font-style: italic; }
+    .msg-error {
+      max-width: 94%; border: 1px solid var(--accent); background: var(--paper);
+      color: var(--red); padding: 0;
+    }
+    .msg-error summary {
+      cursor: pointer; padding: 8px 10px; list-style: none;
+      font-family: var(--mono); font-size: 10px; color: var(--accent);
+    }
+    .msg-error summary::-webkit-details-marker { display: none; }
+    .msg-error summary::before { content: "+"; display: inline-block; width: 12px; }
+    .msg-error[open] summary::before { content: "−"; }
+    .msg-error .error-body {
+      padding: 0 10px 9px; white-space: pre-wrap; word-break: break-word;
+      font-family: var(--mono); font-size: 10.5px; color: #6a443b;
+    }
+    .msg-error .error-actions { padding: 0 10px 9px; }
     .empty { color: var(--dim); font-size: 12px; padding: 8px 2px; }
 
     .quick { display: flex; gap: 14px; flex-wrap: wrap; padding: 0 16px 10px; }
+    .quick.hidden, .ask.hidden { display: none; }
     .quick button {
       border: 0; border-radius: 0; background: none; padding: 0;
       color: var(--muted); font-size: 11px;
@@ -494,12 +615,28 @@
     .auth-card .hint { color: var(--dim); font-size: 11px; }
 
     @media (max-width: 980px) {
-      main { grid-template-columns: 1fr; height: auto; padding: 0 18px 18px; }
-      .board { padding-right: 0; border-right: 0; }
-      .chat { margin: 18px 0 0; min-height: 520px; }
+      main {
+        display: flex; flex-direction: column; height: auto;
+        padding: 0 18px 18px;
+      }
+      .chat {
+        order: -1; height: min(68dvh, 680px); min-height: 420px;
+        margin: 0 0 18px;
+      }
+      .board { order: 0; padding-right: 0; border-right: 0; }
+      .board-head h1::before { content: "02 /"; }
+      .chat-head h2::before { content: "01 /"; }
       .add-form { grid-template-columns: 1fr 1fr; }
       .add-form .submit { grid-column: span 2; }
       .goal { display: none; }
+    }
+    @media (max-width: 800px) {
+      .top { flex-wrap: wrap; gap: 8px 14px; padding: 10px 12px 8px; }
+      .brand { flex: 1 1 auto; }
+      .statusline { flex: 1 1 100%; overflow-x: auto; scrollbar-width: none; gap: 10px; }
+      .statusline::-webkit-scrollbar { display: none; }
+      .board-head { gap: 10px 14px; }
+      .board-head .chips { order: 3; flex-basis: 100%; justify-content: flex-start; }
     }
     @media (max-width: 700px) {
       .brief, .meta, .outcome, .task .actions { margin-left: 0; }
@@ -539,10 +676,11 @@
     <div class="brand">
       <span class="mark"></span>
       <strong>FOREMAN</strong>
-      <span class="sub">control plane</span>
+      <span class="sub">one session ops</span>
     </div>
     <div class="statusline">
       <span id="conn" class="pill live">live</span>
+      <span id="session" class="pill" title="master session" role="button" tabindex="0">session -</span>
       <span id="mode" class="pill">rule</span>
       <span id="workers" class="pill">workers 0</span>
       <button id="update-pill" class="pill hidden" type="button" title="有可用更新">update</button>
@@ -554,16 +692,29 @@
   <main>
     <section class="board">
       <div class="board-head">
-        <h1>任务板</h1>
+        <h1>动态任务</h1>
         <div class="chips" id="counts"></div>
         <button class="btn" id="toggle-add">+ 新任务</button>
         <button class="btn ghost" id="toggle-maintenance" type="button">数据</button>
         <button class="btn ghost hidden" id="toggle-history" type="button">全部历史</button>
       </div>
 
-      <div class="live-strip" id="live-strip"></div>
+      <div class="session-banner">
+        <strong>one session</strong>
+        <span>主会话长期在线：接活、分派、盯进度；所有任务结果和细节都直接问它。</span>
+        <span class="session-ref">
+          <code id="session-id">未绑定主会话</code>
+          <button class="btn small hidden" id="copy-session" type="button">复制 id</button>
+        </span>
+      </div>
 
-      <details class="routing-panel" id="routing-panel" open>
+      <div class="live-strip" id="live-strip"></div>
+      <div class="task-toolbar">
+        <input id="task-filter" type="search" autocomplete="off" placeholder="筛选任务、ID、结果…" aria-label="筛选任务" />
+        <span class="task-filter-count" id="task-filter-count"></span>
+      </div>
+
+      <details class="routing-panel" id="routing-panel">
         <summary><strong>模型分工</strong><span class="route-summary" id="route-summary"></span></summary>
         <div class="routing-body">
           <div class="run-row">
@@ -643,6 +794,14 @@
         <summary><strong>数据与存储</strong><span id="maintenance-summary">历史任务保留与清理</span></summary>
         <div class="maintenance-body">
           <section class="maintenance-section">
+            <h4>T3 原生 Workflows</h4>
+            <p>确定性流水线、定时任务、webhook 和审批交给 T3；Foreman 只管理动态任务队列，不重复实现 workflow engine。</p>
+            <div class="maintenance-actions">
+              <button class="btn small" id="check-workflows" type="button">检查 T3 Workflows</button>
+            </div>
+            <div class="maintenance-result" id="workflow-result"></div>
+          </section>
+          <section class="maintenance-section">
             <h4>版本更新</h4>
             <p>检查 npm 上的 foreman-ops 版本。更新只在没有活跃任务时通过受监督的重启执行。</p>
             <div class="maintenance-actions">
@@ -677,17 +836,60 @@
 
     <aside class="chat">
       <div class="chat-head">
-        <h2>和 Foreman 说话</h2>
-        <span class="mode" id="leader-mode">rule</span>
+        <div>
+          <h2>主会话</h2>
+          <p class="chat-sub">唯一入口 · 任务结果和细节直接问这里</p>
+        </div>
+        <div class="chat-tools">
+          <span class="mode" id="leader-mode">rule</span>
+          <button class="chat-jump" id="chat-to-board" type="button">任务板 ↓</button>
+        </div>
       </div>
+      <section class="setup-panel hidden" id="setup-panel">
+        <span class="setup-kicker">first run</span>
+        <h3>把主会话接起来</h3>
+        <p>一个长期存在的主会话负责分派、盯进度和回答所有任务。建好后，Dashboard 只是运维面板。</p>
+        <ol class="setup-steps">
+          <li class="setup-step">
+            <span class="setup-num">01</span>
+            <div>
+              <strong>T3 Code</strong>
+              <p id="setup-t3" class="setup-state">检查中…</p>
+            </div>
+          </li>
+          <li class="setup-step">
+            <span class="setup-num">02</span>
+            <div>
+              <strong>Provider / 项目</strong>
+              <p id="setup-model">读取当前配置…</p>
+              <p class="setup-note">需要 T3 已注册 Foreman provider，并已登录这里显示的 provider。</p>
+            </div>
+          </li>
+          <li class="setup-step">
+            <span class="setup-num">03</span>
+            <div>
+              <strong>主会话</strong>
+              <p id="setup-master">尚未绑定。创建后它会成为唯一入口。</p>
+              <div class="setup-actions">
+                <button class="btn small primary" id="create-master" type="button" disabled>创建并绑定主会话</button>
+                <button class="btn small ghost" id="refresh-setup" type="button">重新检查</button>
+              </div>
+            </div>
+          </li>
+        </ol>
+        <div class="setup-error" id="setup-error"></div>
+        <p class="setup-alt">也可以手动运行 <code>foreman master create</code>；完成后页面会自动发现绑定。</p>
+      </section>
+
       <div class="messages" id="messages"></div>
       <div class="quick" id="quick">
         <button type="button">现在什么情况？</button>
         <button type="button">还有多少活？</button>
         <button type="button">谁在干什么？</button>
+        <button type="button">最近完成了什么？</button>
       </div>
       <form class="ask" id="ask-form">
-        <textarea id="ask-input" rows="2" placeholder="问它：还有几个在跑？卡在哪？"></textarea>
+        <textarea id="ask-input" rows="2" placeholder="问主会话：现在什么情况？任务 tsk_... 为什么失败？"></textarea>
         <button class="btn primary" type="submit">发送</button>
       </form>
     </aside>
@@ -706,9 +908,23 @@
       routeDirty: false,
       routeSignature: null,
       showAllTasks: false,
+      taskFilter: "",
+      setupLoaded: false,
+      setupBusy: false,
     };
 
     const $ = (id) => document.getElementById(id);
+
+    function shortId(id) {
+      return id && id.length > 22 ? `${id.slice(0, 12)}…${id.slice(-4)}` : id;
+    }
+
+    function cleanChatText(text) {
+      return String(text ?? "").replace(
+        /https?:\/\/app\.t3\.codes\/threads\/\S+/g,
+        "（执行线程已记录；细节直接问主会话）",
+      );
+    }
 
     function getToken() {
       try { return localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; }
@@ -777,12 +993,12 @@
       const blocked = tasks.filter((task) => task.status === "blocked");
       const parts = [];
       if (!running.length) {
-        parts.push(el("span", { class: "none", text: "当前没有运行中的 thread" }));
+        parts.push(el("span", { class: "none", text: "当前没有运行中的任务" }));
       }
       for (const task of running.slice(0, 6)) {
         parts.push(el("span", {
           class: "live-item",
-          title: `${task.thread_id || "-"} · ${task.projectShort || "-"}`,
+          title: `${task.projectShort || "-"}${task.model ? ` · ${task.model}` : ""}`,
         }, el("b", { text: task.title }), el("span", { text: task.elapsed })));
       }
       if (running.length > 6) {
@@ -795,7 +1011,12 @@
         parts.push(el("span", { class: "live-item warn", text: `等人处理 ${blocked.length}` }));
       }
       if (counts.failed) {
-        parts.push(el("span", { class: "live-item bad", text: `失败 ${counts.failed}` }));
+        parts.push(el("button", {
+          class: "live-item bad",
+          type: "button",
+          title: "只看失败任务",
+          onClick: () => setTaskFilter("failed"),
+        }, `失败 ${counts.failed}`));
       }
       box.replaceChildren(...parts);
     }
@@ -861,6 +1082,52 @@
     }
 
     let pruneCandidateCount = 0;
+
+    async function checkWorkflows() {
+      const button = $("check-workflows");
+      button.disabled = true;
+      maintenanceText("workflow-result", "正在读取 T3 原生 Workflows…");
+      try {
+        const response = await apiFetch("/api/t3/workflows", { cache: "no-store" });
+        if (response.status === 401) { showGate("令牌无效或已失效"); return; }
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        const workflows = data.workflows;
+        if (workflows.enabled === false) {
+          maintenanceText(
+            "workflow-result",
+            "T3 Workflows 未开启。固定流程、定时任务和审批请在 T3 的 Settings → Labs → Workflows 中开启；Foreman 不再重复实现这套能力。",
+            "ok",
+          );
+          return;
+        }
+        if (workflows.unsupported) {
+          maintenanceText(
+            "workflow-result",
+            "当前配置的 t3 CLI 没有 workflow 命令。请在 T3 桌面端的 Settings → Labs → Workflows 查看；升级 T3 Code 后这里才能读取原生 Workflow 状态。",
+            "ok",
+          );
+          return;
+        }
+        if (!workflows.ok) {
+          maintenanceText("workflow-result", `T3 Workflows 检查失败：${workflows.error || "unknown"}`, "bad");
+          return;
+        }
+        const counts = Object.entries(workflows.counts || {})
+          .map(([status, count]) => `${status}=${count}`)
+          .join("  ");
+        const lines = [`T3 Workflows 已开启${counts ? `：${counts}` : "，当前没有 run"}。`];
+        for (const run of (workflows.runs || []).slice(0, 6)) {
+          lines.push(`· ${run.name || run.title || run.runId || run.id || "run"}  ${run.status || run.state || ""}`);
+        }
+        if ((workflows.runs || []).length > 6) lines.push(`· …还有 ${workflows.runs.length - 6} 个`);
+        maintenanceText("workflow-result", lines.join("\n"), "ok");
+      } catch (error) {
+        maintenanceText("workflow-result", `检查失败：${error.message}`);
+      } finally {
+        button.disabled = false;
+      }
+    }
 
     function updateText(update) {
       if (!update) return "尚未检查更新。";
@@ -949,6 +1216,112 @@
       }
     }
 
+    function setupT3Text(t3) {
+      if (!t3?.configured) return "当前不是 T3 adapter；请先配置 T3 或继续使用 mock。";
+      if (t3.reachable === null) return "尚未检查 T3。";
+      if (t3.reachable) return "T3 CLI 可连接。";
+      return `无法连接 T3：${t3.detail || "unknown"}`;
+    }
+
+    async function loadSetup({ force = false } = {}) {
+      if (state.setupBusy) return;
+      if (!state.data || state.data.leader.masterThreadId) return;
+      if (state.setupLoaded && !force) return;
+      state.setupBusy = true;
+      const t3 = $("setup-t3");
+      t3.className = "setup-state";
+      t3.textContent = "检查中…";
+      $("setup-error").textContent = "";
+      try {
+        const response = await apiFetch("/api/setup", { cache: "no-store" });
+        if (response.status === 401) {
+          showGate("令牌无效或已失效");
+          state.setupLoaded = true;
+          return;
+        }
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        const setup = data.setup;
+        const t3Text = setupT3Text(setup.t3);
+        t3.textContent = t3Text;
+        t3.className = `setup-state ${
+          setup.t3.reachable === true ? "ok" : setup.t3.reachable === false ? "bad" : ""
+        }`;
+        $("setup-model").textContent =
+          `${setup.defaults.label} · effort ${setup.defaults.effort || "auto"} · project ${setup.defaults.project || "-"}`;
+        $("setup-master").textContent = setup.master.bound
+          ? `已绑定 ${shortId(setup.master.threadId)}。`
+          : setup.canCreate
+            ? "尚未绑定。创建后它会成为唯一入口。"
+            : "当前模式不能直接创建；请用 foreman master create，或先启动 T3/control plane。";
+        $("create-master").disabled = !setup.canCreate;
+        $("create-master").textContent = setup.canCreate ? "创建并绑定主会话" : "需要手动创建";
+        state.setupLoaded = true;
+      } catch (error) {
+        t3.className = "setup-state bad";
+        t3.textContent = "T3 检查失败。";
+        $("setup-error").textContent = `检查失败：${error.message}`;
+        state.setupLoaded = true;
+      } finally {
+        state.setupBusy = false;
+      }
+    }
+
+    async function createMaster() {
+      if (state.setupBusy) return;
+      state.setupBusy = true;
+      const button = $("create-master");
+      button.disabled = true;
+      button.textContent = "正在创建…";
+      $("setup-error").textContent = "";
+      try {
+        const response = await apiFetch("/api/master/create", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ title: "Foreman", message: "现在什么情况？" }),
+        });
+        if (response.status === 401) {
+          showGate("令牌无效或已失效");
+          throw new Error("访问令牌无效或已失效");
+        }
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        await refresh({ force: true });
+        if (!state.data?.leader?.masterThreadId) {
+          throw new Error("创建返回成功，但页面还没有发现 master 绑定");
+        }
+      } catch (error) {
+        $("setup-error").textContent = `创建失败：${error.message}
+可以手动运行 foreman master create 后点“重新检查”。`;
+        button.disabled = false;
+        button.textContent = "重试创建";
+      } finally {
+        state.setupBusy = false;
+      }
+    }
+
+    async function copySessionId() {
+      const id = state.data?.leader?.masterThreadId;
+      const text = id || "foreman master create";
+      const button = $("copy-session");
+      const label = id ? "复制 id" : "复制命令";
+      try {
+        await navigator.clipboard.writeText(text);
+        button.textContent = "已复制";
+        setTimeout(() => (button.textContent = label), 1200);
+      } catch {
+        button.textContent = "复制失败";
+        setTimeout(() => (button.textContent = label), 1200);
+      }
+    }
+
+    function askAboutTask(task) {
+      const input = $("ask-input");
+      input.value = `任务 ${task.id}「${task.title}」的详情和结果是什么？`;
+      input.focus();
+      document.querySelector(".chat")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
     function taskCard(task) {
       const card = el("article", { class: `task ${task.status}` });
       const top = el("div", { class: "task-top" },
@@ -960,7 +1333,7 @@
       card.append(el("p", { class: "brief", text: task.brief }));
 
       const metaChildren = [
-        metaItem("id", task.id),
+        metaItem("id", task.id, true),
         metaItem("exec", task.adapter),
         ...(task.provider ? [metaItem("provider", task.provider)] : []),
         ...(task.model ? [metaItem("model", task.model)] : []),
@@ -970,9 +1343,6 @@
           : []),
         ...(task.targetSource ? [metaItem("via", task.targetSource)] : []),
         metaItem("project", task.projectName ? `${task.projectName} · ${task.projectShort}` : task.projectShort),
-        task.thread_link
-          ? el("span", {}, "thread ", el("a", { href: task.thread_link, target: "_blank", rel: "noreferrer", text: "打开线程" }))
-          : metaItem("thread", task.thread_id, true),
         ...(task.worker_id ? [metaItem("worker", task.worker_id, true)] : []),
         metaItem("attempt", `${task.attempts}/${task.max_attempts}`),
         metaItem("elapsed", task.elapsed),
@@ -988,10 +1358,23 @@
 
       if (task.result || task.error) {
         const isErr = task.status === "failed" || task.status === "lost" || task.status === "blocked";
-        card.append(el("div", { class: `outcome${isErr ? " err" : ""}`, text: task.error || task.result }));
+        const text = task.error || task.result;
+        const details = el("details", { class: `outcome${isErr ? " err" : ""}` });
+        details.open = task.status === "blocked";
+        details.append(
+          el("summary", { text: `${isErr ? "查看错误" : "查看结果"} · ${String(text).length} 字符` }),
+          el("div", { class: "outcome-body", text }),
+        );
+        card.append(details);
       }
 
       const actions = el("div", { class: "actions" });
+      actions.append(el("button", {
+        class: "btn small ghost ask-task",
+        type: "button",
+        title: "把这个问题带到主会话，按 Enter 发送",
+        onClick: () => askAboutTask(task),
+      }, "问主会话"));
       if (task.status === "blocked") {
         actions.append(el("button", {
           class: "btn small",
@@ -1303,6 +1686,9 @@
     }
 
     const TASK_HISTORY_LIMIT = 20;
+    const STATUS_FILTERS = new Set([
+      "queued", "running", "blocked", "done", "failed", "lost", "cancelled",
+    ]);
 
     function renderUpdate(update) {
       const pill = $("update-pill");
@@ -1320,27 +1706,64 @@
       }
     }
 
+    function taskMatches(task, filter) {
+      if (!filter) return true;
+      return [
+        task.id,
+        task.title,
+        task.brief,
+        task.result,
+        task.error,
+        task.status,
+        task.statusLabel,
+        task.projectName,
+        task.projectShort,
+        task.model,
+        task.provider,
+      ]
+        .filter(Boolean)
+        .join("\n")
+        .toLowerCase()
+        .includes(filter);
+    }
+
+    function setTaskFilter(value) {
+      state.taskFilter = value;
+      $("task-filter").value = value;
+      if (state.data) renderTaskList(state.data.tasks);
+    }
+
     function renderTaskList(tasks) {
-      const active = tasks.filter((task) =>
+      const filter = state.taskFilter.trim().toLowerCase();
+      const visible = filter
+        ? STATUS_FILTERS.has(filter)
+          ? tasks.filter((task) => task.status === filter)
+          : tasks.filter((task) => taskMatches(task, filter))
+        : tasks;
+      const active = visible.filter((task) =>
         ["queued", "running", "blocked"].includes(task.status),
       );
-      const terminal = tasks
+      const terminal = visible
         .filter((task) => !["queued", "running", "blocked"].includes(task.status))
         .sort(
           (a, b) =>
             (b.finished_at || b.updated_at || 0) -
             (a.finished_at || a.updated_at || 0),
         );
+      const rendered = filter
+        ? visible
+        : state.showAllTasks
+          ? tasks
+          : [...active, ...terminal.slice(0, TASK_HISTORY_LIMIT)];
       const button = $("toggle-history");
-      button.classList.toggle("hidden", terminal.length <= TASK_HISTORY_LIMIT);
+      button.classList.toggle("hidden", Boolean(filter) || terminal.length <= TASK_HISTORY_LIMIT);
       button.textContent = state.showAllTasks
         ? "只看最近"
         : `全部历史 (${terminal.length})`;
-      renderTasks(
-        state.showAllTasks
-          ? tasks
-          : [...active, ...terminal.slice(0, TASK_HISTORY_LIMIT)],
-      );
+      $("task-filter-count").textContent = filter
+        ? `${visible.length}/${tasks.length} 匹配`
+        : `${tasks.length} 个任务 · 显示 ${rendered.length}`;
+      renderTasks(rendered);
     }
 
     function renderTasks(tasks) {
@@ -1348,7 +1771,10 @@
       const sorted = [...tasks].sort((a, b) => statusOrder(a) - statusOrder(b) || b.priority - a.priority);
       box.replaceChildren();
       if (!sorted.length) {
-        box.append(el("div", { class: "empty", text: "还没有任务。点右上角「+ 新任务」，或者直接问 Foreman。" }));
+        const message = state.taskFilter.trim()
+          ? "没有匹配的任务。清空筛选，或换个关键词。"
+          : "还没有任务。点右上角「+ 新任务」，或者直接问 Foreman。";
+        box.append(el("div", { class: "empty", text: message }));
         return;
       }
       for (const task of sorted) box.append(taskCard(task));
@@ -1358,15 +1784,36 @@
       const box = $("messages");
       const latest = chat.length ? chat[chat.length - 1].id : 0;
       if (latest === state.lastChatId && !state.sending) return;
+      const firstRender = !state.lastChatId;
       const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
       box.replaceChildren();
       if (!chat.length) {
         box.append(el("div", { class: "empty", text: "问一句「现在什么情况」，它会按数据库里的状态回答，不靠记忆。" }));
       }
+      let lastUserMessage = "";
       for (const message of chat) {
+        if (message.role === "user") lastUserMessage = message.content;
+        if (message.role !== "user" && /^（leader 调用失败/.test(message.content)) {
+          const details = el("details", { class: "msg-error" });
+          details.append(
+            el("summary", { text: "主会话本轮失败 · 查看诊断" }),
+            el("div", { class: "error-body", text: message.content }),
+          );
+          if (lastUserMessage && !state.sending) {
+            details.append(el("div", { class: "error-actions" },
+              el("button", {
+                class: "btn small",
+                type: "button",
+                onClick: () => ask(lastUserMessage),
+              }, "重试这一轮"),
+            ));
+          }
+          box.append(details);
+          continue;
+        }
         box.append(el("div", { class: `msg ${message.role}` },
           el("span", { class: "role", text: message.role === "user" ? "you" : "foreman" }),
-          el("div", { class: "body", text: message.content }),
+          el("div", { class: "body", text: cleanChatText(message.content) }),
         ));
       }
       if (state.sending) {
@@ -1376,7 +1823,7 @@
         ));
       }
       state.lastChatId = latest;
-      if (nearBottom) box.scrollTop = box.scrollHeight;
+      if (nearBottom || firstRender) box.scrollTop = box.scrollHeight;
     }
 
     async function workerAction(id, action) {
@@ -1466,6 +1913,28 @@
       renderChat(data.chat);
       document.title = `Foreman · ${data.counts.running} 跑 / ${data.counts.queued} 排 / ${data.counts.blocked} 等人`;
       $("goal").textContent = data.goal;
+      const masterThreadId = data.leader.masterThreadId;
+      $("session").textContent = masterThreadId
+        ? "session bound"
+        : "session unbound";
+      $("session").title = masterThreadId
+        ? `唯一主会话：${masterThreadId}`
+        : "尚未绑定 master thread；先运行 foreman master create";
+      $("session").className = `pill ${masterThreadId ? "live" : "dead"}`;
+      $("setup-panel").classList.toggle("hidden", Boolean(masterThreadId));
+      $("quick").classList.toggle("hidden", !masterThreadId);
+      $("ask-form").classList.toggle("hidden", !masterThreadId);
+      if (masterThreadId) state.setupLoaded = false;
+      else loadSetup();
+      $("session-id").textContent = masterThreadId
+        ? `已绑定 · ${shortId(masterThreadId)}`
+        : "未绑定 · 运行 foreman master create";
+      $("session-id").title = masterThreadId || "运行 foreman master create 绑定主会话";
+      $("copy-session").classList.remove("hidden");
+      $("copy-session").textContent = masterThreadId ? "复制 id" : "复制命令";
+      $("copy-session").title = masterThreadId
+        ? "复制 master thread id"
+        : "复制 foreman master create";
       const fc = data.leader.masterFc;
       $("mode").textContent = fc
         ? `FC: ${fc.provider} / ${fc.model} / ${fc.effort}`
@@ -1631,6 +2100,40 @@
       refresh();
     });
 
+    $("chat-to-board").addEventListener("click", () => {
+      document.querySelector(".board")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    $("copy-session").addEventListener("click", copySessionId);
+    $("create-master").addEventListener("click", createMaster);
+    $("refresh-setup").addEventListener("click", () => {
+      state.setupLoaded = false;
+      loadSetup({ force: true });
+    });
+    $("session").addEventListener("click", copySessionId);
+    $("session").addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        copySessionId();
+      }
+    });
+    $("task-filter").addEventListener("input", (event) => {
+      state.taskFilter = event.target.value;
+      if (state.data) renderTaskList(state.data.tasks);
+    });
+    $("task-filter").addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setTaskFilter("");
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) return;
+      event.preventDefault();
+      $("ask-input").focus();
+    });
+
     $("ask-form").addEventListener("submit", (event) => {
       event.preventDefault();
       ask($("ask-input").value);
@@ -1661,6 +2164,7 @@
       if (!panel.classList.contains("hidden")) openMaintenancePanel();
     });
     $("update-pill").addEventListener("click", openMaintenancePanel);
+    $("check-workflows").addEventListener("click", checkWorkflows);
     $("check-update").addEventListener("click", checkUpdate);
     $("toggle-history").addEventListener("click", () => {
       state.showAllTasks = !state.showAllTasks;

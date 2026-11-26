@@ -7,39 +7,40 @@ conversations.
 
 ## Current assets
 
-- `dashboard-live.png` — captured from the mock demo (3 tasks: running, queued,
-  done) with a neutral `docs-demo/acme-web` project path. Used in the README.
+- `dashboard-live.png` — 1440×1000, captured from a sanitized 8-task demo state
+  (`demo-repo`, fake `mcp:demo-master`). Shows the master session, task filter,
+  collapsed routing/errors, and the “问主会话” task action. Used in the README.
+- `first-run.png` — 1440×1000, unbound dashboard with T3 reachable, default
+  FC/project, and the one-click master creation panel.
 - `social-preview.png` — 1280×640 GitHub social card. Upload it manually under
   **Settings → General → Social preview**; GitHub has no upload API.
 
 ## Still to capture
 
-1. `master-lineage.png`
-   - T3 master thread with a task request and a child thread reference
-   - show provider `Foreman (control plane)`
-2. `lineage-panel.png`
-   - Thread details / Lineage with the child marked `subagent`
-3. `completion-notification.png`
-   - `📣 Foreman：✅ 完成 …` with model/effort and thread link
-4. `doctor.png`
+1. `one-session-lookup.png`
+   - master answers a task-detail question without opening a worker thread
+   - show a task id and the returned result/event summary
+2. `doctor.png`
    - `foreman doctor` all green
-5. `first-task.gif` (optional but recommended)
-   - ask → child created → notification
+3. `first-task.gif` (optional but recommended)
+   - ask → queue → completion notification → ask for details in the same session
 
 ## Capture checklist
 
-- use a neutral project name, e.g. `acme-web`, not a personal repo
-- use mock or a dedicated demo data dir
+- use a neutral project name, e.g. `demo-repo`, not a personal repo
+- use mock or a sanitized demo data dir
 - 1440px wide, consistent theme (one light/dark set)
 - redact tokens, local usernames, private paths
-- keep the T3 thread title clear: `Foreman`
-- capture the child link in the master message; this is the main differentiator
+- do **not** make worker-thread links the hero of a screenshot; the master
+  session is the interface
+- keep the T3 master title clear: `Foreman`
 
 ## Suggested flow for the GIF
 
 ```text
 1. Type: 调研最近一个月发布节奏，输出简报
-2. Show: child thread created under master
-3. Show: dashboard running task
-4. Show: completion notification + child link
+2. Show: task queued/running in the dashboard and master session
+3. Show: completion notification
+4. Ask: “刚才那个调研的结论和失败原因？”
+5. Show: master answers from the ledger, without opening a child thread
 ```

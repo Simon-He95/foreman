@@ -82,7 +82,7 @@ function taskLine(task, config, extra = "") {
   const elapsed = task.started_at
     ? `已跑 ${formatDuration(end - task.started_at)}`
     : `等待 ${formatDuration(end - task.created_at)}`;
-  const thread = task.thread_link || (task.thread_id ? `thread=${task.thread_id}` : "thread=-");
+  const thread = task.thread_id ? `执行thread=${task.thread_id}` : "执行thread=-";
   const heartbeat = task.heartbeat_at
     ? `心跳 ${formatDuration(Date.now() - task.heartbeat_at)} 前`
     : "心跳 -";
@@ -126,6 +126,9 @@ export function buildStateCard(
       `FC: ${config.leaderProvider || config.leaderMode} / ${config.leaderModel || "(config default)"} / effort ${config.leaderEffort || "auto"}`,
     );
   }
+  lines.push(
+    "SESSION: one long-lived master conversation is the user interface; worker threads are execution details; answer task details from this ledger.",
+  );
   const routes = mergeModelRoutes(
     config.workerModelRoutes,
     getWorkerModelRoutes(db, null),
@@ -188,7 +191,7 @@ export function buildStateCard(
     const contract = contractLabel(task);
     const policy = policyLabel(task);
     lines.push(
-      `- [${task.id}] ${oneLine(task.title, 80)} | 优先级 ${task.priority} | 已等 ${formatDuration(Date.now() - task.created_at)} | @${shortPath(config, task.project_path)}${task.thread_link ? ` | ${task.thread_link}` : ""}${policy ? ` | ${policy}` : ""}${contract ? ` | 契约=${contract}` : ""}`,
+      `- [${task.id}] ${oneLine(task.title, 80)} | 优先级 ${task.priority} | 已等 ${formatDuration(Date.now() - task.created_at)} | @${shortPath(config, task.project_path)}${policy ? ` | ${policy}` : ""}${contract ? ` | 契约=${contract}` : ""}`,
     );
   }
   if (c.queued > maxItems) {
@@ -210,7 +213,7 @@ export function buildStateCard(
   if (done.length === 0) lines.push("- (none)");
   for (const task of done.slice(0, maxItems)) {
     lines.push(
-      `- [${task.id}] ${oneLine(task.title, 80)} | 用时 ${formatDuration((task.finished_at || Date.now()) - (task.started_at || task.created_at))} | 结果: ${oneLine(task.result, 100)}${task.thread_link ? ` | ${task.thread_link}` : ""}`,
+      `- [${task.id}] ${oneLine(task.title, 80)} | 用时 ${formatDuration((task.finished_at || Date.now()) - (task.started_at || task.created_at))} | 结果: ${oneLine(task.result, 500)}`,
     );
   }
 
@@ -219,7 +222,7 @@ export function buildStateCard(
   if (failed.length === 0) lines.push("- (none)");
   for (const task of failed.slice(0, maxItems)) {
     lines.push(
-      `- [${task.id}] ${oneLine(task.title, 80)} | ${STATUS_LABEL[task.status] || task.status} | ${oneLine(task.error, 120)}${task.thread_link ? ` | ${task.thread_link}` : ""}`,
+      `- [${task.id}] ${oneLine(task.title, 80)} | ${STATUS_LABEL[task.status] || task.status} | ${oneLine(task.error, 300)}`,
     );
   }
 

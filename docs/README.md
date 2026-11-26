@@ -1,12 +1,18 @@
 # Foreman docs
 
-Foreman is a **durable control plane for T3 Code agent threads**. It keeps the
-task ledger, decides when work should be delegated, creates worker threads, and
-pushes completion/failure notifications back to a T3 master thread.
+Foreman is a **one-session operations layer for T3 Code agent fleets**. The
+long-lived master thread is the only interface: it takes new requests, dispatches
+worker threads, receives completion/failure notifications, and answers task
+details by looking them up in the durable ledger. Users do not need to open each
+worker thread.
 
 It is not a general-purpose agent runtime: T3 Code is the UI/thread host, and a
 T3 ACP provider (DimAgent, Codex, Claude, or a compatible provider) supplies the
 worker model.
+
+It is also not a replacement for T3 native Workflows. T3 owns deterministic
+pipelines, schedules, webhooks, and approvals; Foreman owns the dynamic task
+queue, routing, status, and retry layer around them.
 
 ![Foreman dashboard](assets/dashboard-live.png)
 
@@ -51,8 +57,8 @@ Known limits:
 ## The mental model
 
 ```text
-T3 master thread (provider=foreman)
-        │  prompt
+T3 master thread (provider=foreman) — the only user-facing session
+        │  prompt + task lookup
         ▼
 Foreman control plane (/api/ask → leader)
         │  add_task + resolved target plan
@@ -62,8 +68,12 @@ T3 delegate_task (native child thread) / worker assignment
         ▼
 Foreman daemon polls + verifies completion contract
         │
-        └── notification + thread link back to master
+        └── completion notification; task/chat details queried from the same master
+
+deterministic / scheduled / approval pipelines ──> T3 native Workflows
+                                  (not reimplemented by Foreman)
 ```
 
-The dashboard at `http://127.0.0.1:3777` is a read/ops surface. It is not the
-master; it does not talk to the leader unless you use its task API.
+The dashboard at `http://127.0.0.1:3777` is a secondary ops surface for the
+ledger, queue, and maintenance. The T3 master remains the primary one-session
+interface.

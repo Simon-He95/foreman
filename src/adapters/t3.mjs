@@ -457,6 +457,52 @@ export class T3Adapter {
     };
   }
 
+  async workflows() {
+    const { code, stdout, stderr } = await this.call(
+      ["workflow", "list", "--json"],
+      { timeoutMs: 15000 },
+    );
+    const output = `${stdout}
+${stderr}`
+      .replace(/\x1b\[[0-9;]*m/g, "")
+      .trim();
+    if (code !== 0) {
+      if (/workflows? (?:are|is) off|workflowsEnabled/i.test(output)) {
+        return {
+          ok: false,
+          enabled: false,
+          runs: [],
+          counts: {},
+          error: output,
+        };
+      }
+      if (/unrecognized flag|unknown command|subcommands[\s\S]*thread/i.test(output)) {
+        return {
+          ok: false,
+          enabled: null,
+          unsupported: true,
+          runs: [],
+          counts: {},
+          error:
+            "The configured t3 CLI does not expose workflow commands. Update T3 Code or check native Workflows in the desktop app.",
+        };
+      }
+      return { ok: false, enabled: null, runs: [], counts: {}, error: output };
+    }
+    const payload = tryJson(stdout);
+    const runs = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.runs)
+        ? payload.runs
+        : [];
+    const counts = {};
+    for (const run of runs) {
+      const status = String(run?.status || run?.state || "unknown");
+      counts[status] = (counts[status] || 0) + 1;
+    }
+    return { ok: true, enabled: true, runs, counts, error: null };
+  }
+
   async health() {
     try {
       const { code, stdout, stderr } = await this.call(

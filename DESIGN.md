@@ -10,52 +10,87 @@ concepts see [docs/concepts.md](docs/concepts.md); for setup see
 
 ## One sentence
 
-> A leader should be able to answer "what is running, what is queued, what
-> finished, and what failed?" from a durable ledger, without remembering a
-> conversation.
+> One long-lived master session should be able to take a new request, dispatch
+> it, watch the fleet, and answer "what is running, what finished, and what
+> failed — in detail?" from a durable ledger, without making the user visit
+> each task thread.
 
 ## Principles
 
-1. **The ledger is the product.** SQLite is the source of truth for tasks,
+1. **One session is the interface.** The master thread is long-lived and is
+   the only place the user needs to talk. It dispatches work, absorbs
+   completions, and answers for the whole fleet. Worker threads are execution
+   details, not navigation targets.
+2. **The ledger is the product.** SQLite is the source of truth for tasks,
    leases, attempts, events, inbox items, and chat. Model memory is never the
-   source of counts.
-2. **A completion is a fact, not a message.** A worker ending its turn is not
+   source of counts. The master can look up a task's brief, result, error, and
+   event trail on demand inside the same conversation.
+3. **A completion is a fact, not a message.** A worker ending its turn is not
    proof that work is done. Terminal states append an inbox event; optional
    contracts add machine-checkable evidence.
-3. **Silence is not success.** Every running task has a lease and a heartbeat.
+4. **Silence is not success.** Every running task has a lease and a heartbeat.
    A missing heartbeat is reconciled. A missing T3 thread is marked `lost`
    rather than silently restarted; terminal thread references are cleaned in
    the background.
-4. **Push, then reconcile.** The leader consumes terminal events in a batch;
+5. **Push, then reconcile.** The leader consumes terminal events in a batch;
    restart follows the same ledger and reattaches live worker threads by id.
-5. **One task, one worker thread.** The unit of delegation is a task. Native
-   lineage makes that task a T3 child thread; it does not turn one task into a
-   model-chosen swarm.
-6. **T3 executes; Foreman supervises.** Foreman does not reimplement T3's
+6. **One task, one worker thread.** The unit of delegation is a task. Native
+   lineage is an optional T3 view of that task; it does not turn one task into a
+   model-chosen swarm, and it is not required for the one-session experience.
+7. **T3 executes; Foreman supervises.** Foreman does not reimplement T3's
    agent loop, approvals, worktrees, or provider protocol.
-7. **Local-first and explicit.** Loopback is the default; a token is required
+8. **Local-first and explicit.** Loopback is the default; a token is required
    when exposed; project roots are allow-listed. Model/provider intent is
    explicit, capability truth comes from the T3 catalog, and every task stores
    the resolved target plan that the fleet actually executes.
-8. **No build step.** Foreman ships plain ESM and static HTML. Node runs the
+9. **No build step.** Foreman ships plain ESM and static HTML. Node runs the
    source directly, which keeps the install path and debugging story small.
 
 ## What Foreman owns
 
 | Foreman owns | T3 Code owns |
 | --- | --- |
-| Task ledger and status | Threads and runs |
+| Dynamic task ledger and status | Threads and runs |
+| Ad-hoc priority queue | Native Workflows (pipelines, schedules, webhooks, approvals) |
 | Leases, attempts, retries, recovery | Agent execution and tools |
 | Completion inbox and contracts | Approvals and diff/worktree UI |
-| Model target resolution + catalog projection | Authoritative provider/model catalog |
+| Model target resolution + routing policy | Authoritative provider/model catalog |
 | Leader prompt and state card | Provider protocol |
-| Native-lineage delegation target | `parentThreadId` / `subagent` lineage |
-| Dashboard and ops API | Interactive chat and worker UI |
+| One-session interface and detail lookup | Worker/Lineage UI for debugging |
+| Optional native-lineage delegation target | `parentThreadId` / `subagent` lineage |
+| Dashboard and ops API | Interactive thread UI |
 
-## Native lineage is a path decision
+## One-session contract
 
-The leader always emits an `add_task` intent. The master ACP bridge then decides
-whether native delegation is possible:
+The user-facing unit is a conversation, not a task thread. The master session:
+
+- receives new requests and dispatches tasks;
+- receives completion/failure/needs-human notifications;
+- reads the state card for fleet-wide status;
+- can request a **task lookup** when the state card only has a summary.
+
+A lookup is a bounded read against SQLite: task brief, result, error, contract,
+thread reference, and the last events, or a `chat:` search over the durable
+conversation history. The leader is called again with that lookup appended to
+the prompt, then must answer. This avoids both fabricated details and the old
+failure mode of telling the user to open a worker thread just to learn what
+happened.
+
+For T3-backed FC models, Foreman keeps one internal leader thread per master,
+provider, model, and effort and sends every subsequent prompt there. It is an
+implementation detail of the one-session interface, not a new user-facing thread
+per turn. The other leader backends rebuild their context from SQLite on every
+turn.
+
+The worker thread id remains in the ledger for debugging and reattach, and T3
+Lineage remains useful when an execution must be inspected. Neither is part of
+the normal query path.
+
+## Native lineage is an optional path decision
+
+The one-session interface does not depend on native lineage. The leader always
+emits an `add_task` intent; the master ACP bridge may use native delegation when
+the project and provider make it possible:
 
 ```text
 Foreman master thread
@@ -174,6 +209,8 @@ Foreman is not:
 - a distributed task scheduler with multiple writers or HA
 - a sandbox, secret manager, or remote-execution security boundary
 - a workflow engine that infers arbitrary graphs from natural language
+- a replacement for T3 Workflows; deterministic pipelines, schedules, webhooks,
+  and approvals stay in T3, while Foreman manages the dynamic queue around them
 - a promise that a worker solved the semantic problem correctly; contracts are
   evidence, not proof
 

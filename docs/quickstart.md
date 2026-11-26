@@ -148,13 +148,16 @@ and optional completion contract, and records the result.
 
 ## D. Talk to Foreman inside T3
 
-The T3 master is optional. It gives you a T3 chat thread with Foreman and
-completion/failure notifications; the dashboard remains the authoritative ops
-surface.
+The T3 master is the **one-session interface**: one long-lived T3 thread with
+Foreman, completion/failure notifications, and task-detail lookup. The dashboard
+remains a secondary ops surface for the ledger, queue, and maintenance.
 
 ```bash
 foreman master create --title "Foreman"
 ```
+
+If no master is bound, the dashboard shows a first-run panel that checks T3 and
+can create/bind the master for you.
 
 Then in T3:
 
@@ -163,11 +166,13 @@ Then in T3:
    (for example `dim::gpt-6.2-astra` or `dima::deepseek-v4.1-flash`) and effort.
    The choice is saved with the thread and reused when it resumes.
 3. Ask for work in natural language.
-4. Foreman creates child T3 threads for tasks and reports completions.
+4. Foreman creates child T3 threads for tasks, reports completions, and answers
+   task details in the same thread. You do not need to open the child threads.
 
 Native lineage requires the master thread and the task to be in the **same T3
-project**. A master in another project, or a Scratch thread, still chats but
-falls back to top-level worker threads.
+project**. A master in another project, or a Scratch thread, still chats and
+reports results, but falls back to top-level worker threads. Lineage is a
+debugging view, not a required user workflow.
 
 If you already have a master:
 

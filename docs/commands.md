@@ -81,6 +81,25 @@ Flags override environment variables and `foreman.config.json`. The main set:
 Worker flags are documented in [Workers](workers.md); every config key and
 environment variable is in [Configuration](configuration.md).
 
+## Master session
+
+The master is the single user-facing session. Create or bind it once:
+
+```bash
+foreman master create --title "Foreman"
+foreman master show
+foreman master set mcp:<thread-id>
+foreman master test
+```
+
+If no master is bound, the dashboard's first-run panel can also create and bind
+it in one click. Talk to that thread for new work, status, task details,
+failures, and follow-ups.
+Worker threads are execution details. The master can request a bounded SQLite
+lookup for a task's brief, result, error, and events (or `chat:<terms>` for
+older conversation history), so "what happened with that task?" does not
+require opening its thread.
+
 ## Thread reconciliation and task pruning
 
 Thread reconciliation is automatic. The daemon checks T3 thread references
@@ -147,6 +166,18 @@ The selected FC is persisted per T3 master thread. The output also shows
 `standard`, `deep`, `coding`, `default`); each route is a provider + model pair.
 Each task stores the resolved `target_json`, actual reasoning option/value,
 source, and catalog revision; `foreman status --json` exposes those fields.
+
+## T3 native workflows
+
+Deterministic multi-stage pipelines belong to T3's native **Workflows**
+(`Settings → Labs → Workflows`): schedules, webhooks, approvals, typed agent
+steps, checkpointing, retries, and concurrency pools are T3's responsibility.
+Foreman does not recreate that engine.
+
+The **数据 → T3 原生 Workflows** check only reports whether native workflows are
+enabled and their run counts. Foreman remains the dynamic task queue around
+them: ad-hoc requests, priorities, model routes, task status, recovery, and
+human follow-up.
 
 ## Updates
 

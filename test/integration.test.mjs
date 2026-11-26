@@ -27,6 +27,8 @@ import {
   dashboardTasks,
   getProject,
   getMasterFc,
+  getMasterProject,
+  getMeta,
   getTask,
   getWorkerModelRoutes,
   importRunningTask,
@@ -36,14 +38,17 @@ import {
   recentChat,
   recentEvents,
   setMasterFc,
+  searchTasks,
   setMeta,
   setWorkerStatus,
+  taskEvents,
   setWorkerToken,
   unconsumedInbox,
   updateTask,
   upsertWorker,
 } from "../src/db.mjs";
 import { Leader, LeaderLoop } from "../src/leader.mjs";
+import { createMasterSession, masterDefaults } from "../src/master-session.mjs";
 import {
   leaderChoices,
   leaderConfigOptions,
@@ -1545,6 +1550,59 @@ test("state card and rule reply reflect the ledger, not memory", async () => {
   }
 });
 
+test("master can look up task detail and answer without opening a worker thread", async () => {
+  const dir = tempDir();
+  const fakeDim = path.join(ROOT, "test", "fixtures", "fake-lookup-dim.mjs");
+  fs.chmodSync(fakeDim, 0o755);
+  const config = testConfig(dir, { leaderMode: "dim", dimBin: fakeDim });
+  const db = openDb(config.dbPath);
+  try {
+    const task = addTask(db, {
+      title: "修复登录缓存",
+      brief: "定位登录页缓存过期问题",
+      adapter: "mock",
+      projectPath: dir,
+    });
+    updateTask(db, task.id, {
+      status: "done",
+      result: "登录根因是缓存过期。",
+      finished_at: Date.now(),
+    });
+    appendEvent(db, task.id, "done", { result: "登录根因是缓存过期。" });
+    addChat(db, "user", "我们之前决定周五发布登录修复。");
+
+    const matches = searchTasks(db, "之前登录那个任务", 5);
+    assert.ok(matches.some((row) => row.id === task.id));
+    assert.equal(taskEvents(db, task.id, 5).at(-1).type, "done");
+
+    const leader = new Leader({ db, config, logger: quiet });
+    const detail = leader.taskLookup(task.id);
+    assert.match(detail, /登录根因是缓存过期/);
+    assert.match(detail, /EVENTS:/);
+    assert.match(detail, /不要.*打开执行线程/);
+    const chatDetail = leader.taskLookup("chat:周五");
+    assert.match(chatDetail, /对话历史查询/);
+    assert.match(chatDetail, /周五发布登录修复/);
+
+    const result = await leader.turn({
+      message: "刚才那个登录任务的结果是什么？",
+      trigger: "user",
+    });
+    assert.equal(result.fallback, false);
+    assert.match(result.reply, /查到详情：登录根因是缓存过期/);
+
+    const direct = await leader.turn({
+      message: `${task.id} 的结果是什么？`,
+      trigger: "user",
+    });
+    assert.equal(direct.fallback, false);
+    assert.match(direct.reply, /查到详情：登录根因是缓存过期/);
+  } finally {
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("codex leader backend reads the final message and applies actions", async () => {
   const dir = tempDir();
   const fakeCodex = path.join(ROOT, "test", "fixtures", "fake-codex.mjs");
@@ -1610,6 +1668,93 @@ test("dim leader backend runs dim exec and applies actions", async () => {
     assert.equal(added.priority, 11);
     assert.ok(fs.existsSync(path.join(config.dataDir, "leader-workspace")));
   } finally {
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("master session creation binds one T3 thread and stores its FC", async () => {
+  const dir = tempDir();
+  const fakeT3 = path.join(ROOT, "test", "fixtures", "fake-t3-master.mjs");
+  fs.chmodSync(fakeT3, 0o755);
+  const config = testConfig(dir, {
+    adapter: "t3",
+    leaderMode: "dim",
+    leaderModel: "gpt-6.2-astra",
+    leaderEffort: "high",
+    t3Bin: fakeT3,
+    t3Project: dir,
+  });
+  const stateFile = path.join(dir, "fake-t3-master-state.json");
+  const previousStateFile = process.env.FOREMAN_FAKE_T3_MASTER_STATE;
+  process.env.FOREMAN_FAKE_T3_MASTER_STATE = stateFile;
+  const db = openDb(config.dbPath);
+  try {
+    const defaults = masterDefaults(config);
+    assert.equal(defaults.provider, "dim");
+    assert.equal(defaults.model, "gpt-6.2-astra");
+    const result = await createMasterSession({ db, config });
+    assert.equal(result.threadId, "mcp:fake-master");
+    assert.equal(getMeta(db, "master_thread_id"), "mcp:fake-master");
+    assert.equal(getMasterFc(db, "mcp:fake-master").provider, "dim");
+    assert.equal(getMasterProject(db, "mcp:fake-master"), dir);
+
+    const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+    assert.equal(state.argv[0], "thread");
+    assert.equal(state.argv[1], "start");
+    assert.match(state.argv.join(" "), /--provider foreman/);
+    assert.match(state.argv.join(" "), /--model dim::gpt-6\.2-astra/);
+    assert.match(state.argv.join(" "), /--option effort=high/);
+  } finally {
+    if (previousStateFile === undefined) {
+      delete process.env.FOREMAN_FAKE_T3_MASTER_STATE;
+    } else {
+      process.env.FOREMAN_FAKE_T3_MASTER_STATE = previousStateFile;
+    }
+    db.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("t3 leader reuses one long-lived internal session across turns", async () => {
+  const dir = tempDir();
+  const fakeT3 = path.join(ROOT, "test", "fixtures", "fake-t3-leader.mjs");
+  fs.chmodSync(fakeT3, 0o755);
+  const config = testConfig(dir, {
+    leaderMode: "t3",
+    leaderProvider: "claudeAgent",
+    leaderModel: "claude-opus-5-5",
+    t3Bin: fakeT3,
+    t3Project: dir,
+  });
+  const stateFile = path.join(dir, "fake-t3-leader-state.json");
+  const previousStateFile = process.env.FOREMAN_FAKE_T3_STATE;
+  process.env.FOREMAN_FAKE_T3_STATE = stateFile;
+  const db = openDb(config.dbPath);
+  try {
+    const leader = new Leader({ db, config, logger: quiet });
+    const first = await leader.turn({ message: "第一问", trigger: "user" });
+    assert.equal(first.fallback, false);
+    assert.match(first.reply, /first leader reply/);
+    const second = await leader.turn({ message: "第二问", trigger: "user" });
+    assert.equal(second.fallback, false);
+    assert.match(second.reply, /second leader reply/);
+
+    const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+    assert.equal(state.starts, 1);
+    assert.equal(state.sends, 1);
+    assert.equal(state.lastSendThread, "mcp:fake-leader-session");
+    const meta = db
+      .prepare("SELECT key, value FROM meta WHERE key LIKE 't3_leader_thread:%'")
+      .all();
+    assert.equal(meta.length, 1);
+    assert.equal(meta[0].value, "mcp:fake-leader-session");
+  } finally {
+    if (previousStateFile === undefined) {
+      delete process.env.FOREMAN_FAKE_T3_STATE;
+    } else {
+      process.env.FOREMAN_FAKE_T3_STATE = previousStateFile;
+    }
     db.close();
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -2015,6 +2160,44 @@ test("retryVerified safely requeues a blocked task when its thread is gone", asy
   }
 });
 
+test("T3 adapter reports native workflow availability", async () => {
+  const dir = tempDir();
+  try {
+    const adapter = new T3Adapter({ t3Bin: "t3", projectPath: dir });
+    adapter.call = async () => ({
+      code: 1,
+      stdout: "",
+      stderr: "Workflows are off on this server. Turn them on in Settings → Labs.",
+    });
+    const off = await adapter.workflows();
+    assert.equal(off.ok, false);
+    assert.equal(off.enabled, false);
+
+    adapter.call = async () => ({
+      code: 1,
+      stdout: "USAGE\n  t3 <subcommand>\n\nSUBCOMMANDS\n  thread\n\nERROR\n  Unrecognized flag: --json",
+      stderr: "",
+    });
+    const unsupported = await adapter.workflows();
+    assert.equal(unsupported.unsupported, true);
+    assert.equal(unsupported.enabled, null);
+
+    adapter.call = async () => ({
+      code: 0,
+      stdout: JSON.stringify([{ status: "running" }, { status: "waiting" }]),
+      stderr: "",
+    });
+    const on = await adapter.workflows();
+    assert.equal(on.ok, true);
+    assert.equal(on.enabled, true);
+    assert.equal(on.runs.length, 2);
+    assert.equal(on.counts.running, 1);
+    assert.equal(on.counts.waiting, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("T3 adapter treats a deleted thread as stopped and missing", async () => {
   const dir = tempDir();
   try {
@@ -2271,6 +2454,19 @@ test("HTTP API requires a token and enforces project roots", async () => {
     });
     assert.equal(cached.status, 304);
 
+    const setup = await fetch(`${base}/api/setup`, { headers: auth });
+    assert.equal(setup.status, 200);
+    const setupBody = await setup.json();
+    assert.equal(setupBody.setup.master.bound, false);
+    assert.equal(setupBody.setup.canCreate, false);
+    assert.ok(setupBody.setup.defaults.provider);
+    const createWithoutT3 = await fetch(`${base}/api/master/create`, {
+      method: "POST",
+      headers: { ...auth, "content-type": "application/json" },
+      body: "{}",
+    });
+    assert.equal(createWithoutT3.status, 409);
+
     const projects = await fetch(`${base}/api/projects`, { headers: auth });
     assert.equal(projects.status, 200);
     const projectBody = await projects.json();
@@ -2282,6 +2478,9 @@ test("HTTP API requires a token and enforces project roots", async () => {
       effort: "high",
     });
     setMeta(db, "master_thread_id", "mcp:http-test");
+    const boundSetup = await fetch(`${base}/api/setup`, { headers: auth });
+    assert.equal(boundSetup.status, 200);
+    assert.equal((await boundSetup.json()).setup.master.bound, true);
     const fc = await fetch(`${base}/api/master/fc?threadId=mcp:http-test`, {
       headers: auth,
     });

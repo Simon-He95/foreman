@@ -2,7 +2,7 @@
   <img src="docs/assets/logo.svg" alt="Foreman — control plane for coding-agent fleets" width="520">
 </p>
 
-**An always-on control plane for coding-agent fleets.**
+**One long-lived session for your whole coding-agent fleet.**
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
@@ -10,16 +10,28 @@
 [![npm](https://img.shields.io/npm/v/foreman-ops.svg)](https://www.npmjs.com/package/foreman-ops)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.5-339933.svg)](package.json)
-[![Status: 1.2](https://img.shields.io/badge/status-1.2-2f6b4f.svg)](#status)
+[![Status: 1.4](https://img.shields.io/badge/status-1.4-2f6b4f.svg)](#status)
 
-You talk to one leader. The leader keeps a task ledger, a daemon leases work to
-worker threads, and every completion wakes the leader with a state card built
-from SQLite — not from model memory.
+You talk to one Foreman session. It dispatches work to as many worker threads
+as the task needs, watches the whole history, receives every completion, and
+answers “what happened?” from a SQLite ledger — not from model memory. The
+worker threads are execution details; you do not have to visit them.
+
+This is not a better multi-agent orchestration engine. It is the **one-session
+operations layer** around T3's existing delegation and workflow primitives.
 
 ![Foreman dashboard](docs/assets/dashboard-live.png)
 
 Foreman is the missing operations layer between you and a coding-agent UI:
 
+- **One session** — a long-lived master thread is the only interface. It takes
+  new requests, keeps the queue moving, and summarizes the whole fleet in one
+  conversation.
+- **All details are queryable from the master** — completed work, failures,
+  artifacts, and event trails live in the ledger. The master looks up details on
+  demand; users do not need to open each task thread.
+- **First-run binding** — when no master is bound, the dashboard checks T3 and
+  can create/bind the master in one click instead of making you wire it by hand.
 - **Durable ledger** — tasks, leases, attempts, events, inbox, chat. Restarting
   the process does not forget what was running.
 - **Leases, not guesses** — a silent worker is not a completed worker. Missing
@@ -33,8 +45,8 @@ Foreman is the missing operations layer between you and a coding-agent UI:
   the leader, dashboard, API, and notifications.
 - **Proof of work** — optional completion contracts: a token, a non-empty
   artifact, an artifact marker, or a git diff.
-- **Native T3 lineage** — a Foreman master thread can delegate child tasks into
-  T3's Thread details / Lineage view, instead of scattering top-level threads.
+- **Optional T3 lineage** — child threads can show up in T3's Lineage view for
+  debugging, but the one-session experience does not depend on navigating them.
 
 ## What it is, and what it is not
 
@@ -43,17 +55,112 @@ execution layer and worker UI; a T3 ACP provider (DimAgent, Codex, Claude, or a
 compatible provider) supplies the model and tools. Foreman supplies the
 control plane: queueing, leases, retries, recovery, contracts, and status.
 
+It is also **not a workflow engine**. T3's native Workflows own deterministic
+pipelines, schedules, webhooks, and approval steps; Foreman owns the dynamic,
+ad-hoc queue: “this new request now, these three in parallel, route the hard one
+to the strong model, tell me what failed.” The two should compose, not
+duplicate.
+
+### T3 native vs. Foreman
+
+T3 Code already provides the execution substrate:
+
+- **Threads and runs** with provider/model selection, approvals, diffs, and worktrees.
+- **Native delegation**: `delegate_task` can create a child thread with lineage while the
+  parent run is active.
+- **Native Workflows**: deterministic TypeScript pipelines with schedules, webhooks,
+  approvals, checkpointed steps, retries, and concurrency pools. Depending on the
+  T3 build they may be lab-gated; enable them in Settings → Labs → Workflows.
+- **Thread UI and mobile access** for inspecting and driving individual workers.
+
+Foreman deliberately does **not** rebuild those primitives. It adds the operations layer
+for work that arrives continuously and does not fit a fixed pipeline:
+
+| Question | T3 native | Foreman |
+| --- | --- | --- |
+| How do I spawn an agent? | Start a thread or `delegate_task` inside a parent run | Same T3 execution, behind a durable queue with priorities |
+| How do I run a known multi-step pipeline? | Native Workflows | Defers to T3 Workflows; not a workflow engine |
+| Where do I see one fleet-wide conversation? | Each thread has its own conversation | One long-lived master session is the interface |
+| Where is an earlier discussion? | Read that thread's history | Ask the master; it can search the durable SQLite chat history |
+| Where do I track ad-hoc work over time? | Thread list and run state | SQLite ledger: queued/running/blocked/done/failed/lost, attempts, leases |
+| What happens after a crash or silence? | T3 thread state remains | Heartbeats, leases, retries, lost detection, thread reconciliation, reattach |
+| How do I ask “what exactly happened in task X?” | Open the child thread and read it | Ask the master; it performs a bounded ledger lookup and answers in the same session |
+| How do I choose models for a batch of work? | Per-thread model selection | Central routes by difficulty/category, with explicit per-task overrides |
+| How do I know the worker actually finished? | Inspect the thread/run | Optional completion contracts: token, artifact, artifact marker, or git diff |
+| What is the UI? | The thread/worker UI | The master session; the dashboard is a secondary ops surface, and worker threads are debug details |
+
+**Division of labor**
+
+- Deterministic, repeated, webhook/schedule/approval work → **T3 Workflows**.
+- A single in-conversation child-agent step → **T3 `delegate_task`**.
+- A stream of ad-hoc requests that needs one durable conversation, priority, routing,
+  recovery, and “what happened?” answers → **Foreman**.
+
+Use T3 directly when one thread and one task are enough, or when the work is a
+fixed pipeline. Use Foreman when the work is a moving queue and the user should
+not have to manage the thread list.
+
+**Design rules**
+
+1. **The master session is the product.** One long-lived conversation is the user
+   interface; child threads are execution details and never required navigation.
+2. **The ledger is the truth.** Status, results, failures, and details are read from
+   SQLite, not model memory or a reconstructed thread list.
+3. **Lookup beats opening threads.** When the state card is only a summary, the master
+   asks the ledger for a bounded task record or a `chat:` conversation search and answers
+   in the same conversation.
+4. **Dynamic work is queued; deterministic work is delegated.** Foreman owns priority,
+   leases, retries, recovery, and routing. T3 owns the agent runtime and native workflows.
+5. **Contracts are evidence, not proof.** A completion can require a token, artifact,
+   or diff; semantic correctness still needs human judgment.
+6. **T3 lineage is optional.** It is a debugging view, not the one-session UX.
+
+This is why Foreman is neither “another orchestration layer” nor a T3 replacement. It is
+the missing **one-session operations layer** between a person and an agent fleet. Full
+rationale, module map, and non-goals: [DESIGN.md](DESIGN.md).
+
+### Why one session
+
+One long-lived conversation is the product, not a chat veneer over a thread
+list. The master has a durable view of every active and recent task, receives
+completion/failure notifications, and can ask the ledger for a specific task's
+brief, result, error, and event trail. That lookup happens inside the same
+conversation, so there is one place to ask and one place to answer. Opening a
+worker thread is a debugging escape hatch, not a required workflow.
+
+Illustrative exchange:
+
 ```text
-you ── chat + task board ──> Foreman leader (rule | claude | codex | dim)
-                                │
-                     SQLite: tasks / events / inbox / chat
-                                │
-                     daemon: claim → lease → poll → retry → reattach
-                                │
-                     adapter: mock | t3
-                                │
-                  T3 Code server ──> thread ──> Claude / Codex / Dim / ACP agent
-                                └── worktree, diff, approvals, mobile UI
+you:    Dispatch these three directions; use the strong model for the hard one.
+master: Queued A (standard), B (standard), and C (deep). C is on the strong model.
+
+you:    Why did the second one fail? What did it actually do?
+master: I’ll check the ledger. It hit a test timeout after locating X, changing Y,
+        and getting stuck at Z. Retry on the current route, or show the full event trail?
+```
+
+No second chat window, no thread list, no “please open the child thread”.
+
+Durability lives in the session and the ledger, not in a model's context window.
+Each turn gets the current state card plus recent conversation; older task or chat
+detail is retrieved on demand. T3-backed leaders also reuse one internal leader
+thread instead of starting a fresh thread per turn.
+
+```text
+you ── one master session ──> Foreman leader (rule | claude | codex | dim)
+                                  │  ▲
+                                  │  └── task detail lookup (SQLite)
+                       SQLite: tasks / events / inbox / chat
+                                  │
+                       daemon: claim → lease → poll → retry → reattach
+                                  │
+                       adapter: mock | t3
+                                  │
+                    T3 Code → worker threads → Claude / Codex / Dim / ACP
+                                  └── execution detail, not the user interface
+
+deterministic / scheduled / approval pipelines ──> T3 native Workflows
+                                  (Foreman does not duplicate this engine)
 ```
 
 T3 can run without Foreman. Foreman can run without T3 in `mock` mode. Together
@@ -206,10 +313,16 @@ foreman up --adapter t3 --leader dim
 foreman master create --title "Foreman"
 ```
 
+If no master is bound, the dashboard also shows a **first-run panel** that checks
+T3, shows the default FC/project, and can create and bind the master in one click.
+
+![First-run master binding](docs/assets/first-run.png)
+
 Then create a T3 thread with provider **Foreman (control plane)** and talk to
-it normally. The master thread only reads state and creates/cancels/retries
-tasks; work happens in worker threads. You can also skip the master and use the
-dashboard/CLI; the master is what adds in-T3 chat and completion notifications.
+it normally. This is the normal one-session path: the master reads state,
+creates/cancels/retries tasks, receives completions, and answers task details
+from the ledger. Work happens in worker threads, but you do not need to open
+them. The dashboard/CLI remain available as ops fallbacks, not the primary UX.
 
 If you already have a master thread:
 
