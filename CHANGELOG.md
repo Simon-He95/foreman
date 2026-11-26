@@ -6,6 +6,8 @@ All notable changes to Foreman are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-26
+
 ### Added
 
 - **One-session interface**: the long-lived master thread is the primary
