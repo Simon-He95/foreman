@@ -7,7 +7,7 @@ text; this page is the reference.
 
 | Command | What it does |
 | --- | --- |
-| `foreman init` | Guided setup; writes `foreman.config.json`. |
+| `foreman init` | Guided setup; writes `foreman.config.json` in the current directory (or `--cwd`). |
 | `foreman up` | Daemon + leader loop + dashboard. Keep this process running. |
 | `foreman daemon` | Daemon only; no HTTP server. |
 | `foreman add <title> --brief ...` | Enqueue a task; optional `--model` / `--effort`. |
@@ -47,11 +47,26 @@ text; this page is the reference.
 --require-diff
 ```
 
+## Working directory
+
+`init` and `up` resolve the config, data directory, and default project from the
+current directory. To operate on another directory without `cd`, pass `--cwd`:
+
+```bash
+foreman init --cwd /path/to/repo --yes --adapter t3 ...
+foreman up --cwd /path/to/repo
+```
+
+`--project` changes the task project path inside that configuration; it does not
+move the config itself. `foreman init --help` and `foreman up --help` print
+usage and do not create files or start a process.
+
 ## Global flags
 
 Flags override environment variables and `foreman.config.json`. The main set:
 
 ```text
+--cwd dir
 --adapter mock|t3
 --execution local|worker
 --project name|path

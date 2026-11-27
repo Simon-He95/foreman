@@ -12,6 +12,14 @@ All notable changes to Foreman are documented here. The format follows
   forbid tool use. A model that tried `exec` could otherwise hit an
   interactive approval prompt in a non-interactive session, exit 3, and force
   the rule-report fallback.
+- `foreman init --help` and `foreman up --help` now print usage without
+  creating a config, data directory, or control-plane process.
+- Added `--cwd` for `init` and `up` so a target repository can be configured
+  and started without changing the shell directory first.
+- `foreman init --adapter t3` now discovers an available provider/model from
+  the T3 catalog instead of assuming `dim` / `deepseek-v4.1-flash`; invalid
+  explicit targets fail before a config is written, and the default leader is
+  `rule` unless a specific leader is requested.
 
 ## [1.5.1] - 2026-11-26
 

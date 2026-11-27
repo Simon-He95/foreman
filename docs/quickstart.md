@@ -70,6 +70,10 @@ Open `http://127.0.0.1:3777`, click **+ 新任务**, and use the dashboard. This
 useful for evaluating the UI/API and for developing against the ledger. Mock
 tasks are simulated and do not run a real coding agent.
 
+To initialize a repository without changing directory first, use
+`foreman init --cwd /path/to/repo --yes --adapter mock ...`; start it later with
+`foreman up --cwd /path/to/repo`. `--help` on a subcommand is side-effect free.
+
 If you installed from a source checkout without a global CLI, substitute
 `node src/cli.mjs` for `foreman`.
 
@@ -103,15 +107,16 @@ The npm CLI can write the config and register its T3 provider in one step:
 foreman init --yes \
   --adapter t3 \
   --project /path/to/your/repo \
-  --provider dim \
-  --model dimcode-api-oauth/deepseek-v4.1-flash \
-  --leader dim \
+  --leader rule \
   --register
 ```
 
-The model above is a DimAgent example; replace provider/model for the Rust
-`dima`, Codex, or Claude. If you omit `--yes`, the wizard asks the same questions and offers to
-register the provider.
+`init` reads the T3 provider/model catalog and uses an available pair. To pin a
+specific one, add `--provider <provider-id> --model <model-slug>`; if it is not
+advertised by T3, init fails instead of writing a broken config. `--leader rule`
+keeps the leader independent of a provider; add `--leader <mode> --leader-model
+<model>` only when that provider is available. If you omit `--yes`, the wizard
+offers the same choices.
 
 From a source checkout, `npm run t3:register-foreman` is equivalent to the
 registration part. If you use DimAgent as the worker, also run

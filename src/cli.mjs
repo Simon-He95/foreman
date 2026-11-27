@@ -53,6 +53,7 @@ import {
 import {
   leaderProviderSummary,
   normalizeLeaderOverride,
+  t3CatalogSnapshot,
 } from "./leader-options.mjs";
 import { notifyMaster } from "./notifier.mjs";
 import { checkForUpdate, currentVersion, updateSummary } from "./update.mjs";
@@ -76,6 +77,10 @@ function parseFlags(args) {
   const positional = [];
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
+    if (arg === "--help" || arg === "-h") {
+      flags.help = true;
+      continue;
+    }
     if (!arg.startsWith("--")) {
       positional.push(arg);
       continue;
@@ -123,6 +128,7 @@ function overridesFromFlags(flags) {
     adapter: "adapter",
     concurrency: "concurrency",
     "data-dir": "dataDir",
+    cwd: "cwd",
     leader: "leaderMode",
     "leader-provider": "leaderProvider",
     "leader-model": "leaderModel",
@@ -270,6 +276,119 @@ function configPathFor(cwd) {
   return path.join(cwd, "foreman.config.json");
 }
 
+const T3_LEADER_MODE_BY_PROVIDER = {
+  dim: "dim",
+  dima: "dima",
+  codex: "codex",
+  claudeAgent: "claude",
+};
+const T3_LEADER_PROVIDER_BY_MODE = {
+  dim: "dim",
+  dima: "dima",
+  codex: "codex",
+  claude: "claudeAgent",
+  t3: null,
+};
+const DEFAULT_T3_PROVIDER = "dim";
+const DEFAULT_T3_MODEL = "dimcode-api-oauth/deepseek-v4.1-flash";
+const DEFAULT_LEADER_MODEL = {
+  dim: "gpt-6.2-astra",
+  dima: "deepseek-v4.1-flash",
+};
+
+function initT3Choices() {
+  const snapshot = t3CatalogSnapshot();
+  return (snapshot.choices || []).filter(
+    (choice) =>
+      choice.provider &&
+      choice.model &&
+      choice.providerStatus !== "error",
+  );
+}
+
+function initDefaultT3Choice(choices) {
+  return (
+    choices.find(
+      (choice) =>
+        choice.provider === DEFAULT_T3_PROVIDER &&
+        choice.model === DEFAULT_T3_MODEL,
+    ) ||
+    choices.find((choice) => choice.provider === DEFAULT_T3_PROVIDER) ||
+    choices[0] ||
+    null
+  );
+}
+
+function initDefaultWorkerModel(choices, provider) {
+  return (
+    choices.find(
+      (choice) =>
+        choice.provider === provider && choice.model === DEFAULT_T3_MODEL,
+    ) ||
+    choices.find((choice) => choice.provider === provider) ||
+    null
+  );
+}
+
+function initLeaderModeForProvider(provider) {
+  return T3_LEADER_MODE_BY_PROVIDER[provider] || "t3";
+}
+
+function initProviderForLeaderMode(mode) {
+  return T3_LEADER_PROVIDER_BY_MODE[mode] || null;
+}
+
+function initDefaultLeaderModel(choices, provider, mode) {
+  const preferred = DEFAULT_LEADER_MODEL[mode];
+  return (
+    (preferred &&
+      choices.find(
+        (choice) =>
+          choice.provider === provider && choice.model === preferred,
+      )) ||
+    choices.find((choice) => choice.provider === provider) ||
+    null
+  );
+}
+
+function initAvailableChoices(choices, limit = 12) {
+  return choices
+    .slice(0, limit)
+    .map((choice) => `${choice.provider}::${choice.model}`)
+    .join(", ");
+}
+
+function resolveInitT3Pair(choices, requestedProvider, requestedModel) {
+  const provider = requestedProvider
+    ? String(requestedProvider).trim()
+    : null;
+  const model = requestedModel ? String(requestedModel).trim() : null;
+  if (choices.length) {
+    let candidates = choices;
+    if (provider) {
+      candidates = candidates.filter((choice) => choice.provider === provider);
+    }
+    if (model) {
+      candidates = candidates.filter((choice) => choice.model === model);
+    }
+    if (!candidates.length) {
+      throw new Error(
+        `no matching T3 provider/model; available: ${initAvailableChoices(choices) || "(none)"}`,
+      );
+    }
+    const chosen = model
+      ? candidates[0]
+      : provider
+        ? initDefaultWorkerModel(choices, provider) || candidates[0]
+        : candidates[0];
+    return { provider: chosen.provider, model: chosen.model };
+  }
+  if (provider && model) return { provider, model };
+  throw new Error(
+    "No T3 provider/model catalog found. Start T3, authenticate a provider in T3 Code, then run `foreman models`; or pass both --provider and --model explicitly.",
+  );
+}
+
 function displayPath(cwd, target) {
   const rel = path.relative(cwd, target);
   return rel && !rel.startsWith("..") ? `./${rel}` : target;
@@ -321,48 +440,107 @@ async function commandInit(flags) {
     if (!["mock", "t3"].includes(mode)) {
       throw new Error(`unknown adapter: ${mode}`);
     }
-    const provider =
-      mode === "t3"
-        ? String(
-            flags.provider ||
-              (await ask("T3 provider (dim/dima/codex/claude)", "dim")),
-          )
+    let provider = null;
+    let model = null;
+    let leaderMode = "rule";
+    let leaderProvider = null;
+    let leaderModel = null;
+    let leaderEffort = null;
+    if (mode === "t3") {
+      const choices = initT3Choices();
+      const defaultChoice = initDefaultT3Choice(choices);
+      const providerOptions = [...new Set(choices.map((choice) => choice.provider))];
+      let requestedProvider = flags.provider
+        ? String(flags.provider).trim()
         : null;
-    const model =
-      mode === "t3"
-        ? String(
-            flags.model ||
-              (await ask("Worker model", "dimcode-api-oauth/deepseek-v4.1-flash")),
-          )
-        : null;
-    const leaderMode =
-      mode === "t3"
-        ? String(flags.leader || (await ask("Leader (rule/dim/dima/codex/claude)", "dim")))
-        : "rule";
-    const leaderModel =
-      mode === "t3" && leaderMode !== "rule"
-        ? String(
+      const requestedModel = flags.model ? String(flags.model).trim() : null;
+      if (!requestedProvider && requestedModel) {
+        const match = choices.find((choice) => choice.model === requestedModel);
+        if (match) requestedProvider = match.provider;
+      }
+      const providerDefault = requestedProvider || defaultChoice?.provider || "";
+      const providerAnswer = requestedProvider ||
+        String(
+          await ask(
+            `T3 provider (${providerOptions.join("/") || "none detected"})`,
+            providerDefault,
+          ),
+        ).trim();
+      const defaultWorker =
+        initDefaultWorkerModel(choices, providerAnswer) || defaultChoice;
+      const modelAnswer = requestedModel ||
+        String(
+          await ask("Worker model", defaultWorker?.model || ""),
+        ).trim();
+      const resolved = resolveInitT3Pair(choices, providerAnswer, modelAnswer);
+      provider = resolved.provider;
+      model = resolved.model;
+
+      const leaderModes = [
+        "rule",
+        ...new Set(
+          choices.map((choice) => initLeaderModeForProvider(choice.provider)),
+        ),
+      ];
+      leaderMode =
+        String(
+          flags.leader ||
+            (await ask(`Leader (${leaderModes.join("/")})`, "rule")),
+        ).trim() || "rule";
+      if (!["rule", "dim", "dima", "codex", "claude", "t3"].includes(leaderMode)) {
+        throw new Error(`unknown leader: ${leaderMode}`);
+      }
+      if (leaderMode !== "rule") {
+        leaderProvider =
+          String(
+            flags["leader-provider"] ||
+              initProviderForLeaderMode(leaderMode) ||
+              (leaderMode === "t3" ? provider : "") ||
+              "",
+          ).trim() || null;
+        if (!leaderProvider) {
+          throw new Error(
+            `--leader ${leaderMode} requires --leader-provider when no standard provider is available`,
+          );
+        }
+        const providerModels = choices.filter(
+          (choice) => choice.provider === leaderProvider,
+        );
+        if (choices.length && !providerModels.length) {
+          throw new Error(
+            `leader provider ${leaderProvider} is not available in T3; available: ${initAvailableChoices(choices) || "(none)"}`,
+          );
+        }
+        const defaultLeader = initDefaultLeaderModel(
+          choices,
+          leaderProvider,
+          leaderMode,
+        );
+        leaderModel =
+          String(
             flags["leader-model"] ||
-              (await ask(
-                "Leader model (optional; e.g. gpt-6.2-astra for dim, deepseek-v4.1-flash for dima)",
-                leaderMode === "dim"
-                  ? "gpt-6.2-astra"
-                  : leaderMode === "dima"
-                    ? "deepseek-v4.1-flash"
-                    : "",
-              )),
-          ).trim() || null
-        : null;
-    const leaderEffort =
-      mode === "t3" && leaderMode !== "rule"
-        ? String(
+              (await ask("Leader model", defaultLeader?.model || "")),
+          ).trim() || null;
+        if (!leaderModel) {
+          throw new Error(
+            "a leader model is required; pass --leader-model or use --leader rule",
+          );
+        }
+        if (
+          choices.length &&
+          !providerModels.some((choice) => choice.model === leaderModel)
+        ) {
+          throw new Error(
+            `leader model ${leaderModel} is not available for provider ${leaderProvider}; available: ${providerModels.map((choice) => choice.model).join(", ") || "(none)"}`,
+          );
+        }
+        leaderEffort =
+          String(
             flags["leader-effort"] ||
-              (await ask(
-                "Leader effort (auto|none|high|max)",
-                "high",
-              )),
-          ).trim() || null
-        : null;
+              (await ask("Leader effort (auto|none|high|max)", "high")),
+          ).trim() || null;
+      }
+    }
     const dataDir = path.resolve(
       cwd,
       String(flags["data-dir"] || (await ask("Data directory", ".foreman"))),
@@ -414,7 +592,7 @@ async function commandInit(flags) {
       t3Worktree: false,
       concurrency: Number(flags.concurrency || 2),
       leaderMode,
-      leaderProvider: flags["leader-provider"] ? String(flags["leader-provider"]).trim() : null,
+      leaderProvider,
       leaderModel,
       leaderEffort,
       leaderTickMs: 3000,
@@ -1717,7 +1895,7 @@ function usage() {
   console.log(`foreman — a durable leader for agent fleets
 
 usage:
-  foreman init [--yes] [--project path] [--adapter mock|t3] [--provider dim] [--model slug] [--leader dim|dima|codex|claude] [--leader-provider id] [--leader-model slug] [--leader-effort auto|none|high|max] [--force-model slug] [--force-provider id] [--data-dir .foreman] [--port 3777] [--register] [--force]
+  foreman init [--cwd dir] [--yes] [--project path] [--adapter mock|t3] [--provider id] [--model slug] [--leader dim|dima|codex|claude] [--leader-provider id] [--leader-model slug] [--leader-effort auto|none|high|max] [--force-model slug] [--force-provider id] [--data-dir .foreman] [--port 3777] [--register] [--force]
   foreman add <title> --brief "..." [--priority 50] [--adapter mock|t3] [--project name|path]
                 [--provider id] [--category light|standard|deep|coding] [--model slug] [--effort auto|none|high|max]
                 [--done-token DONE] [--artifact path] [--artifact-contains text] [--require-diff]
@@ -1725,7 +1903,7 @@ usage:
   foreman project add <name> --path <dir> [--adapter mock|t3]
   foreman project set <name> [--path <dir>] [--adapter mock|t3]
   foreman project enable|disable <name>
-  foreman up [--port 3777] [--host 127.0.0.1] [--token secret] [--allowed-roots .] [--execution local|worker] [--adapter mock|t3] [--leader rule|claude|codex|dim] [--concurrency 3]
+  foreman up [--cwd dir] [--port 3777] [--host 127.0.0.1] [--token secret] [--allowed-roots .] [--execution local|worker] [--adapter mock|t3] [--leader rule|claude|codex|dim|dima] [--concurrency 3]
   foreman daemon [--host 127.0.0.1] [--token secret] [--allowed-roots .]
   foreman master create [--project path] [--title "Foreman 主控"]
   foreman master show|set <thread-id>|test|clear
@@ -1768,7 +1946,9 @@ const [command = "up", ...rest] = process.argv.slice(2);
 const { flags, positional } = parseFlags(rest);
 
 try {
-  switch (command) {
+  if (flags.help) {
+    usage();
+  } else switch (command) {
     case "init":
       await commandInit(flags);
       break;

@@ -22,9 +22,9 @@ Fix the project, then restart Foreman:
 
 ```bash
 cd /path/to/your/repo
-foreman init --adapter t3 --project . \
-  --provider dim --model dimcode-api-oauth/deepseek-v4.1-flash \
-  --leader dima --leader-model deepseek-v4.1-flash --leader-effort max --force
+foreman init --adapter t3 --project . --leader rule --force
+# init chooses an available provider/model from the T3 catalog.
+# To pin one: --provider <provider-id> --model <model-slug>
 foreman project set default --adapter t3
 # restart the control plane; existing mock tasks stay historical
 ```

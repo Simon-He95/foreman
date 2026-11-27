@@ -1342,6 +1342,174 @@ test("foreman init writes a non-interactive config", () => {
   }
 });
 
+test("command help is side-effect free", () => {
+  const dir = tempDir();
+  try {
+    const initHelp = execFileSync(
+      process.execPath,
+      [path.join(ROOT, "src", "cli.mjs"), "init", "--help"],
+      { cwd: dir, encoding: "utf8" },
+    );
+    assert.match(initHelp, /usage:/);
+    assert.equal(fs.existsSync(path.join(dir, "foreman.config.json")), false);
+    assert.equal(fs.existsSync(path.join(dir, ".foreman")), false);
+
+    const upHelp = execFileSync(
+      process.execPath,
+      [path.join(ROOT, "src", "cli.mjs"), "up", "-h"],
+      { cwd: dir, encoding: "utf8" },
+    );
+    assert.match(upHelp, /usage:/);
+    assert.equal(fs.existsSync(path.join(dir, "foreman.config.json")), false);
+    assert.equal(fs.existsSync(path.join(dir, ".foreman")), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("foreman init discovers an available T3 provider and model", () => {
+  const dir = tempDir();
+  const home = path.join(dir, "t3-home");
+  const target = path.join(dir, "repo");
+  fs.mkdirSync(path.join(home, "caches"), { recursive: true });
+  fs.mkdirSync(target);
+  fs.writeFileSync(
+    path.join(home, "caches", "claudeAgent.json"),
+    JSON.stringify({
+      providerInstanceId: "claudeAgent",
+      displayName: "Claude",
+      status: "ready",
+      auth: { status: "authenticated" },
+      models: [{ slug: "claude-sonnet-5-5", name: "Claude Sonnet" }],
+    }),
+  );
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        path.join(ROOT, "src", "cli.mjs"),
+        "init",
+        "--cwd",
+        target,
+        "--yes",
+        "--adapter",
+        "t3",
+        "--data-dir",
+        "data",
+        "--port",
+        "3999",
+      ],
+      {
+        cwd: dir,
+        env: { ...process.env, T3CODE_HOME: home },
+        stdio: "pipe",
+      },
+    );
+    const config = JSON.parse(
+      fs.readFileSync(path.join(target, "foreman.config.json"), "utf8"),
+    );
+    assert.equal(config.t3Provider, "claudeAgent");
+    assert.equal(config.t3Model, "claude-sonnet-5-5");
+    assert.equal(config.leaderMode, "rule");
+    assert.equal(config.leaderModel, null);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("foreman init refuses an unavailable explicit T3 target", () => {
+  const dir = tempDir();
+  const home = path.join(dir, "t3-home");
+  const target = path.join(dir, "repo");
+  fs.mkdirSync(path.join(home, "caches"), { recursive: true });
+  fs.mkdirSync(target);
+  fs.writeFileSync(
+    path.join(home, "caches", "claudeAgent.json"),
+    JSON.stringify({
+      providerInstanceId: "claudeAgent",
+      displayName: "Claude",
+      status: "ready",
+      models: [{ slug: "claude-sonnet-5-5", name: "Claude Sonnet" }],
+    }),
+  );
+  try {
+    assert.throws(() =>
+      execFileSync(
+        process.execPath,
+        [
+          path.join(ROOT, "src", "cli.mjs"),
+          "init",
+          "--cwd",
+          target,
+          "--yes",
+          "--adapter",
+          "t3",
+          "--provider",
+          "missing-provider",
+          "--model",
+          "missing-model",
+          "--data-dir",
+          "data",
+          "--port",
+          "3999",
+        ],
+        {
+          cwd: dir,
+          env: { ...process.env, T3CODE_HOME: home },
+          stdio: "pipe",
+        },
+      ),
+    );
+    assert.equal(fs.existsSync(path.join(target, "foreman.config.json")), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("--cwd initializes and reads a config in the target directory", () => {
+  const dir = tempDir();
+  const target = path.join(dir, "repo");
+  fs.mkdirSync(target);
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        path.join(ROOT, "src", "cli.mjs"),
+        "init",
+        "--cwd",
+        target,
+        "--yes",
+        "--adapter",
+        "mock",
+        "--data-dir",
+        "data",
+        "--port",
+        "3998",
+      ],
+      { cwd: dir, stdio: "pipe" },
+    );
+    assert.ok(fs.existsSync(path.join(target, "foreman.config.json")));
+    assert.equal(fs.existsSync(path.join(dir, "foreman.config.json")), false);
+
+    const status = execFileSync(
+      process.execPath,
+      [
+        path.join(ROOT, "src", "cli.mjs"),
+        "status",
+        "--cwd",
+        target,
+        "--json",
+      ],
+      { cwd: dir, encoding: "utf8" },
+    );
+    const data = JSON.parse(status);
+    assert.equal(data.config.adapter, "mock");
+    assert.equal(data.config.projectPath, target);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("CLI flag overrides include leader effort", () => {
   const dir = tempDir();
   try {

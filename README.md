@@ -298,16 +298,15 @@ npx t3@latest serve --no-browser --port 3773
 npx t3@latest project add /path/to/your/repo
 
 # 2. Authenticate your ACP provider in T3, then configure + register Foreman
-foreman init --adapter t3 --provider dim \
+foreman init --adapter t3 \
   --project /path/to/your/repo \
-  --model dimcode-api-oauth/deepseek-v4.1-flash \
-  --leader dim --register
+  --leader rule --register
 
 # From a source checkout, npm run t3:register-foreman does the registration.
 # For the DimAgent worker, the source-only helper is: npm run t3:register-dim
 
 # 3. Restart T3 so the new provider appears, then start Foreman
-foreman up --adapter t3 --leader dim
+foreman up --adapter t3
 
 # 4. Create the T3 master thread that receives notifications
 foreman master create --title "Foreman"
@@ -344,11 +343,10 @@ Normal use needs **two long-running processes**, started in this order:
 
 1. **T3 Code** — desktop app, or `npx t3@latest serve --no-browser --port 3773`.
    Keep it running; worker threads live inside T3.
-2. **Foreman** — from your project directory:
+2. **Foreman** — from your project directory, or pass `--cwd`:
 
    ```bash
-   cd /path/to/your/repo
-   foreman up
+   foreman up --cwd /path/to/your/repo
    ```
 
    `foreman up` is a blocking process. It runs the daemon, leader loop, API, and
