@@ -50,10 +50,11 @@ text; this page is the reference.
 ## Working directory
 
 `init` and `up` resolve the config, data directory, and default project from the
-current directory. To operate on another directory without `cd`, pass `--cwd`:
+current directory. `init` also registers the Foreman provider in T3 by default;
+use `--no-register` to skip that side effect. To operate on another directory without `cd`, pass `--cwd`:
 
 ```bash
-foreman init --cwd /path/to/repo --yes --adapter t3 ...
+foreman init --cwd /path/to/repo --yes --adapter t3 --leader rule
 foreman up --cwd /path/to/repo
 ```
 

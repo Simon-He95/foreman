@@ -106,17 +106,20 @@ The npm CLI can write the config and register its T3 provider in one step:
 ```bash
 foreman init --yes \
   --adapter t3 \
-  --project /path/to/your/repo \
-  --leader rule \
-  --register
+  --leader rule
 ```
 
-`init` reads the T3 provider/model catalog and uses an available pair. To pin a
-specific one, add `--provider <provider-id> --model <model-slug>`; if it is not
-advertised by T3, init fails instead of writing a broken config. `--leader rule`
-keeps the leader independent of a provider; add `--leader <mode> --leader-model
-<model>` only when that provider is available. If you omit `--yes`, the wizard
-offers the same choices.
+`init` defaults the project to the current directory, reads the T3
+provider/model catalog, lists the enabled **worker** providers, and uses an
+available pair. In an interactive terminal you can select a provider/model by
+number; `--yes` takes the detected default. The `foreman` / `foremanMock` control-plane providers are
+intentionally not valid worker targets.
+It also registers the Foreman provider automatically; use `--no-register` if you
+want to skip that. To pin a specific target, add `--provider <provider-id>
+--model <model-slug>`; if it is not advertised by T3, init fails instead of
+writing a broken config. `--leader rule` keeps the leader independent of a
+provider; add `--leader <mode> --leader-model <model>` only when that provider is
+available. If you omit `--yes`, the wizard offers the same choices.
 
 From a source checkout, `npm run t3:register-foreman` is equivalent to the
 registration part. If you use DimAgent as the worker, also run

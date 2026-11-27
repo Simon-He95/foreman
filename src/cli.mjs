@@ -296,14 +296,18 @@ const DEFAULT_LEADER_MODEL = {
   dima: "deepseek-v4.1-flash",
 };
 
-function initT3Choices() {
+function initT3Catalog() {
   const snapshot = t3CatalogSnapshot();
-  return (snapshot.choices || []).filter(
+  const choices = (snapshot.choices || []).filter(
     (choice) =>
       choice.provider &&
       choice.model &&
       choice.providerStatus !== "error",
   );
+  const providers = (snapshot.providers || []).filter(
+    (provider) => provider && provider.enabled !== false,
+  );
+  return { snapshot, choices, providers };
 }
 
 function initDefaultT3Choice(choices) {
@@ -358,6 +362,39 @@ function initAvailableChoices(choices, limit = 12) {
     .join(", ");
 }
 
+function printInitT3Catalog(catalog, selected = null) {
+  if (!catalog.choices.length) return;
+  const byProvider = new Map();
+  for (const choice of catalog.choices) {
+    const models = byProvider.get(choice.provider) || [];
+    models.push(choice.model);
+    byProvider.set(choice.provider, models);
+  }
+  const providerMeta = new Map(
+    catalog.providers.map((provider) => [provider.id, provider]),
+  );
+  console.log(
+    "T3 worker providers detected (Foreman control-plane providers are excluded):",
+  );
+  for (const [provider, models] of byProvider) {
+    const meta = providerMeta.get(provider);
+    const status = meta?.status ? `, ${meta.status}` : "";
+    console.log(`  ${provider}${status}`);
+    for (const model of models.slice(0, 5)) {
+      console.log(`    - ${model}`);
+    }
+    if (models.length > 5) {
+      console.log(`    … ${models.length - 5} more model(s)`);
+    }
+    console.log(
+      `    use: foreman init --force --adapter t3 --leader rule --provider ${provider} --model ${models[0]}`,
+    );
+  }
+  if (selected) {
+    console.log(`Using: ${selected.provider} / ${selected.model}`);
+  }
+}
+
 function resolveInitT3Pair(choices, requestedProvider, requestedModel) {
   const provider = requestedProvider
     ? String(requestedProvider).trim()
@@ -385,7 +422,7 @@ function resolveInitT3Pair(choices, requestedProvider, requestedModel) {
   }
   if (provider && model) return { provider, model };
   throw new Error(
-    "No T3 provider/model catalog found. Start T3, authenticate a provider in T3 Code, then run `foreman models`; or pass both --provider and --model explicitly.",
+    "No usable T3 worker provider/model found. Foreman/foremanMock are control-plane providers and cannot be worker targets. Start T3, enable and authenticate a worker ACP provider, then run `foreman models`; or pass both --provider and --model explicitly.",
   );
 }
 
@@ -421,6 +458,30 @@ async function commandInit(flags) {
     if (!answer) return fallback;
     return answer === "y" || answer === "yes";
   };
+  const askList = async (label, items, fallback = null, printItems = true) => {
+    if (!items.length) return fallback || "";
+    if (!rl || items.length === 1) return fallback || items[0].value;
+    if (printItems) {
+      console.log(`${label}:`);
+      items.forEach((item, index) => {
+        console.log(`  ${index + 1}. ${item.label || item.value}`);
+      });
+    }
+    while (true) {
+      const suffix = fallback ? ` [${fallback}]` : "";
+      const answer = (await rl.question(`选择${suffix}: `)).trim();
+      if (!answer) return fallback || items[0].value;
+      const index = Number(answer);
+      if (Number.isInteger(index) && index >= 1 && index <= items.length) {
+        return items[index - 1].value;
+      }
+      const match = items.find(
+        (item) => item.value === answer || item.label === answer,
+      );
+      if (match) return match.value;
+      console.log(`请输入 1-${items.length}，或完整名称。`);
+    }
+  };
 
   try {
     const defaultProject = path.resolve(
@@ -447,9 +508,14 @@ async function commandInit(flags) {
     let leaderModel = null;
     let leaderEffort = null;
     if (mode === "t3") {
-      const choices = initT3Choices();
+      const catalog = initT3Catalog();
+      const choices = catalog.choices;
+      printInitT3Catalog(catalog);
       const defaultChoice = initDefaultT3Choice(choices);
-      const providerOptions = [...new Set(choices.map((choice) => choice.provider))];
+      const providerIds = [...new Set(choices.map((choice) => choice.provider))];
+      const providerLabels = new Map(
+        catalog.providers.map((item) => [item.id, item.displayName || item.id]),
+      );
       let requestedProvider = flags.provider
         ? String(flags.provider).trim()
         : null;
@@ -458,23 +524,47 @@ async function commandInit(flags) {
         const match = choices.find((choice) => choice.model === requestedModel);
         if (match) requestedProvider = match.provider;
       }
-      const providerDefault = requestedProvider || defaultChoice?.provider || "";
-      const providerAnswer = requestedProvider ||
-        String(
-          await ask(
-            `T3 provider (${providerOptions.join("/") || "none detected"})`,
-            providerDefault,
-          ),
-        ).trim();
+      const providerAnswer =
+        requestedProvider ||
+        (choices.length
+          ? await askList(
+              "可用 T3 worker provider",
+              providerIds.map((id) => ({
+                value: id,
+                label: `${providerLabels.get(id) || id} (${id})`,
+              })),
+              defaultChoice?.provider || providerIds[0],
+              false,
+            )
+          : String(
+              await ask(
+                "T3 worker provider (未检测到 catalog；输入 provider id)",
+                "",
+              ),
+            ).trim());
+      const modelItems = choices
+        .filter((choice) => choice.provider === providerAnswer)
+        .map((choice) => ({
+          value: choice.model,
+          label: `${choice.model}${choice.label && choice.label !== choice.model ? ` — ${choice.label}` : ""}`,
+        }));
       const defaultWorker =
         initDefaultWorkerModel(choices, providerAnswer) || defaultChoice;
-      const modelAnswer = requestedModel ||
-        String(
-          await ask("Worker model", defaultWorker?.model || ""),
-        ).trim();
+      const modelAnswer =
+        requestedModel ||
+        (modelItems.length
+          ? await askList(
+              `provider ${providerAnswer} 的模型`,
+              modelItems,
+              defaultWorker?.model || modelItems[0].value,
+            )
+          : String(
+              await ask("Worker model (未检测到 model；输入 model slug)", ""),
+            ).trim());
       const resolved = resolveInitT3Pair(choices, providerAnswer, modelAnswer);
       provider = resolved.provider;
       model = resolved.model;
+      console.log(`Using: ${provider} / ${model}`);
 
       const leaderModes = [
         "rule",
@@ -619,21 +709,20 @@ async function commandInit(flags) {
       console.log(`  provider  ${provider}`);
       console.log(`  model     ${model}`);
       const registerScript = path.resolve(__dirname, "..", "scripts", "setup-t3-foreman.mjs");
-      const register = Boolean(
-        flags.register ||
-          (rl &&
-            (await askYesNo("Register the Foreman provider in T3 now?", true))),
-      );
+      const register =
+        !flags["no-register"] &&
+        (flags.register || !rl || (await askYesNo("Register the Foreman provider in T3 now?", true)));
       if (register && fs.existsSync(registerScript)) {
         const result = spawnSync(process.execPath, [registerScript], {
           cwd,
           stdio: "inherit",
         });
         if (result.status !== 0) {
-          throw new Error("T3 provider registration failed; run npm run t3:register-foreman");
+          throw new Error("T3 provider registration failed; config was written. Retry after fixing T3 settings.");
         }
-      } else {
-        console.log("  next      re-run with --register (source checkout: npm run t3:register-foreman), then restart T3");
+        console.log("  register  Foreman provider registered; restart T3 to load it");
+      } else if (!flags["no-register"]) {
+        console.log("  next      provider not registered; run foreman init --register (or npm run t3:register-foreman), then restart T3");
       }
     }
     if (mode === "mock") {
@@ -1895,7 +1984,7 @@ function usage() {
   console.log(`foreman — a durable leader for agent fleets
 
 usage:
-  foreman init [--cwd dir] [--yes] [--project path] [--adapter mock|t3] [--provider id] [--model slug] [--leader dim|dima|codex|claude] [--leader-provider id] [--leader-model slug] [--leader-effort auto|none|high|max] [--force-model slug] [--force-provider id] [--data-dir .foreman] [--port 3777] [--register] [--force]
+  foreman init [--cwd dir] [--yes] [--project path] [--adapter mock|t3] [--provider id] [--model slug] [--leader rule|dim|dima|codex|claude] [--leader-provider id] [--leader-model slug] [--leader-effort auto|none|high|max] [--force-model slug] [--force-provider id] [--data-dir .foreman] [--port 3777] [--register|--no-register] [--force]
   foreman add <title> --brief "..." [--priority 50] [--adapter mock|t3] [--project name|path]
                 [--provider id] [--category light|standard|deep|coding] [--model slug] [--effort auto|none|high|max]
                 [--done-token DONE] [--artifact path] [--artifact-contains text] [--require-diff]

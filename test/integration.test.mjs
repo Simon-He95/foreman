@@ -1384,7 +1384,7 @@ test("foreman init discovers an available T3 provider and model", () => {
     }),
   );
   try {
-    execFileSync(
+    const output = execFileSync(
       process.execPath,
       [
         path.join(ROOT, "src", "cli.mjs"),
@@ -1402,9 +1402,12 @@ test("foreman init discovers an available T3 provider and model", () => {
       {
         cwd: dir,
         env: { ...process.env, T3CODE_HOME: home },
-        stdio: "pipe",
+        encoding: "utf8",
       },
     );
+    assert.match(output, /T3 worker providers detected/);
+    assert.match(output, /claudeAgent/);
+    assert.match(output, /use: foreman init --force/);
     const config = JSON.parse(
       fs.readFileSync(path.join(target, "foreman.config.json"), "utf8"),
     );
@@ -1412,6 +1415,13 @@ test("foreman init discovers an available T3 provider and model", () => {
     assert.equal(config.t3Model, "claude-sonnet-5-5");
     assert.equal(config.leaderMode, "rule");
     assert.equal(config.leaderModel, null);
+    const settings = JSON.parse(
+      fs.readFileSync(path.join(home, "userdata", "settings.json"), "utf8"),
+    );
+    assert.equal(
+      settings.providerInstances.foreman.displayName,
+      "Foreman (control plane)",
+    );
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

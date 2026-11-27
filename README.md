@@ -298,9 +298,7 @@ npx t3@latest serve --no-browser --port 3773
 npx t3@latest project add /path/to/your/repo
 
 # 2. Authenticate your ACP provider in T3, then configure + register Foreman
-foreman init --adapter t3 \
-  --project /path/to/your/repo \
-  --leader rule --register
+foreman init --adapter t3 --leader rule
 
 # From a source checkout, npm run t3:register-foreman does the registration.
 # For the DimAgent worker, the source-only helper is: npm run t3:register-dim

@@ -20,6 +20,10 @@ All notable changes to Foreman are documented here. The format follows
   the T3 catalog instead of assuming `dim` / `deepseek-v4.1-flash`; invalid
   explicit targets fail before a config is written, and the default leader is
   `rule` unless a specific leader is requested.
+- `foreman init --adapter t3` now lists the enabled T3 worker providers/models,
+  offers numbered provider/model selection in the interactive wizard, prints
+  copyable override commands, defaults the project to the current directory,
+  and registers the Foreman provider automatically (`--no-register` opts out).
 
 ## [1.5.1] - 2026-11-26
 

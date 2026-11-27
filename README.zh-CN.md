@@ -229,9 +229,7 @@ npx t3@latest serve --no-browser --port 3773
 npx t3@latest project add /path/to/your/repo
 
 # 2. 在 T3 里登录 provider，然后配置并注册 Foreman
-foreman init --adapter t3 \
-  --project /path/to/your/repo \
-  --leader rule --register
+foreman init --adapter t3 --leader rule
 
 # 从源码运行时，npm run t3:register-foreman 等价于注册这一步
 # 只有使用 DimAgent worker 时才需要：npm run t3:register-dim
