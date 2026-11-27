@@ -1,6 +1,6 @@
 {
   "name": "foreman-ops",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "description": "One long-lived session for coding-agent fleets on T3 Code: dispatch, track, and query all work from one master thread.",
   "type": "module",
   "license": "MIT",
