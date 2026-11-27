@@ -771,10 +771,11 @@ test("master FC selection persists and per-master turns do not block each other"
 test("leader override runs dima with model and effort and can use a T3 fallback provider", async () => {
   const dir = tempDir();
   const argsFile = path.join(dir, "args.txt");
+  const stdinFile = path.join(dir, "stdin.txt");
   const fakeDima = path.join(dir, "fake-dima.sh");
   fs.writeFileSync(
     fakeDima,
-    `#!/bin/sh\nprintf '%s\n' "$@" > ${JSON.stringify(argsFile)}\ncat >/dev/null\nprintf '%s\n' '{"reply":"fake dima leader reply","actions":[]}'\n`,
+    `#!/bin/sh\nprintf '%s\n' "$@" > ${JSON.stringify(argsFile)}\ncat > ${JSON.stringify(stdinFile)}\nprintf '%s\n' '{"reply":"fake dima leader reply","actions":[]}'\n`,
     { mode: 0o755 },
   );
   const fakeT3 = path.join(dir, "fake-t3.sh");
@@ -810,6 +811,11 @@ test("leader override runs dima with model and effort and can use a T3 fallback 
     const args = fs.readFileSync(argsFile, "utf8").trim().split("\n");
     assert.equal(args[args.indexOf("--model") + 1], "deepseek-v4.1-flash");
     assert.equal(args[args.indexOf("--effort") + 1], "max");
+    assert.equal(args[args.indexOf("--permission") + 1], "read-only");
+    assert.match(
+      fs.readFileSync(stdinFile, "utf8"),
+      /不要调用任何工具/,
+    );
 
     const t3 = await leader.turn({
       message: "现在什么情况？",

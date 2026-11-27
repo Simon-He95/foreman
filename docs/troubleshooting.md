@@ -36,6 +36,15 @@ completed task whose result is a mock placeholder.
 If the master still claims real data after this, use `foreman status` and check
 `ADAPTER: t3` plus `PROJECTS: default@...[t3]` before retrying.
 
+## FC 调用失败：`dima exec` / `Interactive approval required`
+
+This is not a provider outage. The leader model tried to call a tool such as
+`exec`, and a non-interactive leader session cannot approve it. Foreman now
+runs `dima exec` with `--permission read-only` and tells the leader not to use
+tools; update the control plane and restart it. The leader can still answer
+from the state card or use the ledger lookup, while workers keep their normal
+project permissions.
+
 ## `The provider could not start this turn`
 
 Usually an ACP session resume problem. Foreman advertises `session/resume`; make

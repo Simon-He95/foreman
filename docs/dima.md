@@ -127,8 +127,12 @@ case.
 ## Permissions
 
 `dima` has its own permission setting. The T3 ACP client does not always send a
-permission preset. For a working worker, the Rust alpha config should allow the
-intended writes:
+permission preset. Foreman invokes the **leader** with `dima exec --permission
+read-only`, because the leader only coordinates and must never execute
+repository commands; this also avoids non-interactive approval failures. Worker
+threads are separate and use their own T3/dima permissions.
+
+For a working worker, the Rust alpha config should allow the intended writes:
 
 ```json
 {

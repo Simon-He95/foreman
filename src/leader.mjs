@@ -352,6 +352,7 @@ export class Leader {
       `【触发】${trigger}`,
       `【用户消息】${message || "（无，仅做一次简报）"}`,
       "",
+      "不要调用任何工具（exec/read/grep/codemode 等），不要读取文件系统或运行命令；这是非交互的 leader 会话，工具审批会让整轮失败。需要任务详情时只能用下面的 lookup，不能靠工具。",
       "只输出一个 JSON 对象，不要 markdown 代码围栏，不要额外文字：",
       '{"reply":"回答用户当前问题，最多 6 行；状态只在被问时给","lookup":null,"actions":[]}',
       "",
@@ -531,7 +532,7 @@ export class Leader {
     const prompt = this.buildPrompt({ message, trigger, events, ...context });
     const workspace = path.join(this.config.dataDir, "leader-workspace");
     fs.mkdirSync(workspace, { recursive: true });
-    const args = ["exec"];
+    const args = ["exec", "--permission", "read-only"];
     if (leaderConfig.leaderModel) {
       args.push("--model", String(leaderConfig.leaderModel).trim());
     }

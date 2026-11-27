@@ -6,6 +6,13 @@ All notable changes to Foreman are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- `dima` leader turns now run with `--permission read-only` and explicitly
+  forbid tool use. A model that tried `exec` could otherwise hit an
+  interactive approval prompt in a non-interactive session, exit 3, and force
+  the rule-report fallback.
+
 ## [1.5.1] - 2026-11-26
 
 ### Fixed
